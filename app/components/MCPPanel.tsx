@@ -26,7 +26,7 @@ function CopyButton({ text }: { text: string }) {
 	};
 
 	return (
-		<Tooltip content={copied ? "Copied!" : "Copy"} asChild>
+		<Tooltip content={copied ? "已复制！" : "复制"} asChild>
 			<Button
 				variant="ghost"
 				shape="square"
@@ -39,23 +39,23 @@ function CopyButton({ text }: { text: string }) {
 					)
 				}
 				onClick={handleCopy}
-				aria-label="Copy to clipboard"
+				aria-label="复制到剪贴板"
 			/>
 		</Tooltip>
 	);
 }
 
 const TOOLS = [
-	{ name: "list_mailboxes", desc: "List all mailboxes" },
-	{ name: "list_emails", desc: "List emails in a folder" },
-	{ name: "get_email", desc: "Read a full email with body" },
-	{ name: "get_thread", desc: "Load a conversation thread" },
-	{ name: "search_emails", desc: "Search emails by query" },
-	{ name: "draft_reply", desc: "Draft a reply to an email" },
-	{ name: "send_reply", desc: "Send a reply" },
-	{ name: "send_email", desc: "Send a new email" },
-	{ name: "mark_email_read", desc: "Mark email as read/unread" },
-	{ name: "move_email", desc: "Move email to a folder" },
+	{ name: "list_mailboxes", desc: "列出所有邮箱" },
+	{ name: "list_emails", desc: "列出文件夹中的邮件" },
+	{ name: "get_email", desc: "读取完整邮件正文" },
+	{ name: "get_thread", desc: "加载会话线程" },
+	{ name: "search_emails", desc: "按关键词搜索邮件" },
+	{ name: "draft_reply", desc: "起草邮件回复" },
+	{ name: "send_reply", desc: "发送回复" },
+	{ name: "send_email", desc: "发送新邮件" },
+	{ name: "mark_email_read", desc: "标记邮件已读/未读" },
+	{ name: "move_email", desc: "将邮件移到文件夹" },
 ];
 
 export default function MCPPanel() {
@@ -80,7 +80,7 @@ export default function MCPPanel() {
 						</div>
 						<div>
 							<h3 className="text-sm font-semibold text-kumo-default">
-								Connect via MCP
+								通过 MCP 连接
 							</h3>
 							<p className="text-xs text-kumo-subtle">
 								Model Context Protocol
@@ -88,17 +88,14 @@ export default function MCPPanel() {
 						</div>
 					</div>
 					<p className="text-xs text-kumo-subtle leading-relaxed">
-						This email agent exposes an MCP server so AI coding
-						assistants can manage your inbox directly — read emails,
-						search, draft replies, and send messages using natural
-						language.
+						这个邮件助手提供了一个 MCP 服务器，让 AI 编程助手可以直接管理你的收件箱——用自然语言阅读邮件、搜索、起草回复并发送消息。
 					</p>
 				</div>
 
 				{/* MCP URL */}
 				<div className="space-y-1.5">
 					<label className="text-xs font-medium text-kumo-strong block">
-						Server URL
+						服务器地址
 					</label>
 					<div className="relative group">
 						<div className="absolute right-1.5 top-1/2 -translate-y-1/2">
@@ -113,7 +110,7 @@ export default function MCPPanel() {
 				{/* Available tools */}
 				<div className="space-y-2">
 					<h4 className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle px-0.5">
-						Available Tools
+						可用工具
 					</h4>
 					<div className="border border-kumo-line rounded-lg divide-y divide-kumo-line">
 						{TOOLS.map((tool) => (

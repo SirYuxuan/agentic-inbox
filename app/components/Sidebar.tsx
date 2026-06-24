@@ -30,11 +30,11 @@ const FOLDER_ICONS: Record<string, React.ReactNode> = {
 };
 
 const SYSTEM_FOLDER_LINKS = [
-	{ id: Folders.INBOX, label: "Inbox" },
-	{ id: Folders.SENT, label: "Sent" },
-	{ id: Folders.DRAFT, label: "Drafts" },
-	{ id: Folders.ARCHIVE, label: "Archive" },
-	{ id: Folders.TRASH, label: "Trash" },
+	{ id: Folders.INBOX, label: "收件箱" },
+	{ id: Folders.SENT, label: "已发送" },
+	{ id: Folders.DRAFT, label: "草稿箱" },
+	{ id: Folders.ARCHIVE, label: "归档" },
+	{ id: Folders.TRASH, label: "废纸篓" },
 ];
 
 interface FolderLinkProps {
@@ -104,7 +104,7 @@ export default function Sidebar() {
 	};
 
 	const displayName = useMemo(() => {
-		if (!currentMailbox) return mailboxId?.split("@")[0] || "Mailbox";
+		if (!currentMailbox) return mailboxId?.split("@")[0] || "邮箱";
 		// Prefer settings.fromName > name > local part of email
 		if (currentMailbox.settings?.fromName) {
 			return currentMailbox.settings.fromName;
@@ -133,7 +133,7 @@ export default function Sidebar() {
 					className="flex items-center gap-1.5 text-kumo-subtle text-sm hover:text-kumo-default transition-colors mb-2.5 cursor-pointer bg-transparent border-0 p-0"
 				>
 					<CaretLeftIcon size={14} />
-					<span>Mailboxes</span>
+					<span>邮箱列表</span>
 				</button>
 				<div className="px-1">
 					<div className="text-base font-semibold text-kumo-default truncate">
@@ -153,7 +153,7 @@ export default function Sidebar() {
 					onClick={() => startCompose()}
 					className="w-full"
 				>
-					Compose
+					写邮件
 				</Button>
 			</div>
 
@@ -175,16 +175,16 @@ export default function Sidebar() {
 					<div className="pt-5">
 						<div className="flex items-center justify-between px-3 mb-1.5">
 							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
-								Folders
+								文件夹
 							</span>
-							<Tooltip content="New folder" asChild>
+							<Tooltip content="新建文件夹" asChild>
 								<Button
 									variant="ghost"
 									shape="square"
 									size="sm"
 									icon={<PlusIcon size={16} />}
 									onClick={() => setIsCreateFolderOpen(true)}
-									aria-label="Create new folder"
+									aria-label="新建文件夹"
 								/>
 							</Tooltip>
 						</div>
@@ -206,16 +206,16 @@ export default function Sidebar() {
 					<div className="pt-5">
 						<div className="flex items-center justify-between px-3 mb-1.5">
 							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
-								Folders
+								文件夹
 							</span>
-							<Tooltip content="New folder" asChild>
+							<Tooltip content="新建文件夹" asChild>
 								<Button
 									variant="ghost"
 									shape="square"
 									size="sm"
 									icon={<PlusIcon size={16} />}
 									onClick={() => setIsCreateFolderOpen(true)}
-									aria-label="Create new folder"
+									aria-label="新建文件夹"
 								/>
 							</Tooltip>
 						</div>
@@ -230,12 +230,12 @@ export default function Sidebar() {
 			>
 				<Dialog size="sm" className="p-6">
 					<Dialog.Title className="text-base font-semibold mb-4">
-						Create folder
+						新建文件夹
 					</Dialog.Title>
 					<form onSubmit={handleCreateFolder} className="space-y-4">
 						<Input
-							label="Folder name"
-							placeholder="e.g. Projects"
+							label="文件夹名称"
+							placeholder="例如：项目"
 							value={newFolderName}
 							onChange={(e) => setNewFolderName(e.target.value)}
 							required
@@ -244,7 +244,7 @@ export default function Sidebar() {
 							<Dialog.Close
 								render={(props) => (
 									<Button {...props} variant="secondary">
-										Cancel
+										取消
 									</Button>
 								)}
 							/>
@@ -253,7 +253,7 @@ export default function Sidebar() {
 								variant="primary"
 								disabled={!newFolderName.trim()}
 							>
-								Create
+								创建
 							</Button>
 						</div>
 					</form>

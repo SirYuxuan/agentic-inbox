@@ -1,0 +1,45 @@
+name: Deploy
+
+# Deploys the Worker to Cloudflare on every push to main, or manually
+# from the Actions tab.
+#
+# Required GitHub repository secrets (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN  - API token with the "Edit Cloudflare Workers" template
+#   CLOUDFLARE_ACCOUNT_ID - your Cloudflare account ID
+#
+# Worker runtime secrets (RESEND_API_KEY, POLICY_AUD, TEAM_DOMAIN) are NOT set
+# here. Set them once with `wrangler secret put <NAME>`; they persist across
+# deploys on the Worker itself.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

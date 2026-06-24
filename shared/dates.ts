@@ -94,7 +94,7 @@ export function formatQuotedDate(dateStr: string | undefined): string {
 	const date = safeParse(dateStr);
 	if (!date) return dateStr;
 
-	return date.toLocaleString("en-US", {
+	return date.toLocaleString("zh-CN", {
 		weekday: "short",
 		month: "short",
 		day: "numeric",

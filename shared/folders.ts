@@ -38,12 +38,12 @@ export const SYSTEM_FOLDER_IDS: readonly FolderId[] = [
  * Used in the sidebar, search result badges, and tool descriptions.
  */
 export const FOLDER_DISPLAY_NAMES: Record<string, string> = {
-	[Folders.INBOX]: "Inbox",
-	[Folders.SENT]: "Sent",
-	[Folders.DRAFT]: "Drafts",
-	[Folders.ARCHIVE]: "Archive",
-	[Folders.TRASH]: "Trash",
-	[Folders.SPAM]: "Spam",
+	[Folders.INBOX]: "收件箱",
+	[Folders.SENT]: "已发送",
+	[Folders.DRAFT]: "草稿箱",
+	[Folders.ARCHIVE]: "归档",
+	[Folders.TRASH]: "废纸篓",
+	[Folders.SPAM]: "垃圾邮件",
 };
 
 /** Formatted string for tool parameter descriptions (agent + MCP). */

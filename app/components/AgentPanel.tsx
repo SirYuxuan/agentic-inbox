@@ -27,39 +27,39 @@ import type { UIMessage } from "ai";
 
 const TOOL_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
 	list_emails: {
-		label: "Fetching emails",
+		label: "正在获取邮件",
 		icon: <EnvelopeSimpleIcon size={14} weight="bold" />,
 	},
 	get_email: {
-		label: "Reading email",
+		label: "正在读取邮件",
 		icon: <EyeIcon size={14} weight="bold" />,
 	},
 	get_thread: {
-		label: "Loading thread",
+		label: "正在加载会话",
 		icon: <ArrowBendUpLeftIcon size={14} weight="bold" />,
 	},
 	search_emails: {
-		label: "Searching",
+		label: "正在搜索",
 		icon: <MagnifyingGlassIcon size={14} weight="bold" />,
 	},
 	draft_email: {
-		label: "Drafting email",
+		label: "正在起草邮件",
 		icon: <PaperPlaneTiltIcon size={14} weight="bold" />,
 	},
 	draft_reply: {
-		label: "Drafting reply",
+		label: "正在起草回复",
 		icon: <PaperPlaneTiltIcon size={14} weight="bold" />,
 	},
 	discard_draft: {
-		label: "Discarding draft",
+		label: "正在丢弃草稿",
 		icon: <TrashIcon size={14} weight="bold" />,
 	},
 	mark_email_read: {
-		label: "Updating status",
+		label: "正在更新状态",
 		icon: <CheckCircleIcon size={14} weight="bold" />,
 	},
 	move_email: {
-		label: "Moving email",
+		label: "正在移动邮件",
 		icon: <EnvelopeSimpleIcon size={14} weight="bold" />,
 	},
 };
@@ -126,7 +126,7 @@ function DraftActions({
 				onClick={onEdit}
 				disabled={disabled}
 			>
-				Edit & send in composer
+				在撰写框中编辑并发送
 			</Button>
 		</div>
 	);
@@ -337,9 +337,9 @@ function AgentChatConnected({
 	};
 
 	const suggestedPrompts = [
-		"Show me the latest inbox emails",
-		"Any unread emails?",
-		"Draft a response to the latest email",
+		"看看收件箱里最新的邮件",
+		"有未读邮件吗？",
+		"帮我起草一封对最新邮件的回复",
 	];
 
 	return (
@@ -349,24 +349,24 @@ function AgentChatConnected({
 				<div className="flex items-center gap-2">
 					<Badge variant="beta">AI</Badge>
 					<span className="text-xs text-kumo-subtle">
-						Email Agent
+						邮件助手
 					</span>
 				</div>
 				<div className="flex items-center gap-1">
 					{isStreaming && <Loader size="sm" />}
 					{messages.length > 0 && (
-						<Tooltip content="Clear chat" asChild>
+						<Tooltip content="清空对话" asChild>
 							<Button
 								variant="ghost"
 								shape="square"
 								size="sm"
 								icon={<TrashIcon size={14} />}
 								onClick={() => {
-									if (window.confirm("Clear chat history?")) {
+									if (window.confirm("清空聊天记录吗？")) {
 										setMessages([]);
 									}
 								}}
-								aria-label="Clear chat"
+								aria-label="清空对话"
 							/>
 						</Tooltip>
 					)}
@@ -385,8 +385,7 @@ function AgentChatConnected({
 							/>
 						</div>
 						<p className="text-xs text-kumo-subtle text-center leading-relaxed px-4">
-							I can read emails, search conversations, and draft
-							replies.
+							我可以阅读邮件、搜索会话，并帮你起草回复。
 						</p>
 						<div className="flex flex-col gap-1.5 w-full">
 							{suggestedPrompts.map((prompt) => (
@@ -446,7 +445,7 @@ function AgentChatConnected({
 											});
 										} else {
 											sendMessage({
-												text: "Let me edit this draft first. Show me what you have so I can modify it.",
+												text: "我想先编辑这份草稿。把现有内容给我看看，方便我修改。",
 											});
 										}
 									}
@@ -461,7 +460,7 @@ function AgentChatConnected({
 								<div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-kumo-elevated border border-kumo-line rounded-bl-sm">
 									<Loader size="sm" />
 									<span className="text-xs text-kumo-subtle">
-										Thinking...
+										思考中……
 									</span>
 								</div>
 							</div>
@@ -480,7 +479,7 @@ function AgentChatConnected({
 							icon={<StopIcon size={14} weight="fill" />}
 							onClick={() => stop()}
 						>
-							Stop generating
+							停止生成
 						</Button>
 					</div>
 				) : (
@@ -492,9 +491,9 @@ function AgentChatConnected({
 							value={inputValue}
 							onChange={(e) => setInputValue(e.target.value)}
 							onKeyDown={handleKeyDown}
-							placeholder="Ask your email agent..."
+							placeholder="向你的邮件助手提问……"
 							rows={1}
-							aria-label="Chat message input"
+							aria-label="聊天消息输入框"
 							className="flex-1 resize-none rounded-lg border border-kumo-line bg-kumo-control px-3 py-2 text-xs text-kumo-default placeholder:text-kumo-subtle focus:outline-none focus:ring-1 focus:ring-kumo-ring min-h-[36px] max-h-[100px]"
 							style={{ height: "auto", overflow: "hidden" }}
 							onInput={(e) => {
@@ -512,7 +511,7 @@ function AgentChatConnected({
 							disabled={!inputValue.trim()}
 							icon={<ArrowUpIcon size={14} weight="bold" />}
 							onClick={handleSend}
-							aria-label="Send message"
+							aria-label="发送消息"
 						/>
 					</div>
 				)}
@@ -541,7 +540,7 @@ export default function AgentPanel() {
 			}),
 		).catch((err) => {
 			console.error("Failed to load agent modules:", err);
-			setLoadError("Failed to connect to agent. Reload to retry.");
+			setLoadError("连接助手失败。请刷新页面重试。");
 		});
 	}, []);
 
@@ -558,7 +557,7 @@ export default function AgentPanel() {
 			<div className="flex flex-col items-center justify-center h-full gap-2">
 				<Loader size="base" />
 				<span className="text-xs text-kumo-subtle">
-					Connecting...
+					连接中……
 				</span>
 			</div>
 		);

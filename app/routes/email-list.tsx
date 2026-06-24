@@ -47,36 +47,36 @@ const FOLDER_EMPTY_STATES: Record<
 > = {
 	[Folders.INBOX]: {
 		icon: <TrayIcon size={48} weight="thin" className="text-kumo-subtle" />,
-		title: "Your inbox is empty",
+		title: "收件箱是空的",
 		description:
-			"New emails will appear here when they arrive. Send an email to get the conversation started.",
+			"新邮件到达后会显示在这里。发一封邮件，开始你的对话吧。",
 		showCompose: true,
 	},
 	[Folders.SENT]: {
 		icon: (
 			<PaperPlaneTiltIcon size={48} weight="thin" className="text-kumo-subtle" />
 		),
-		title: "No sent emails",
-		description: "Emails you send will show up here.",
+		title: "没有已发送的邮件",
+		description: "你发送的邮件会显示在这里。",
 		showCompose: true,
 	},
 	[Folders.DRAFT]: {
 		icon: <FileIcon size={48} weight="thin" className="text-kumo-subtle" />,
-		title: "No drafts",
-		description: "Emails you're still working on will be saved here.",
+		title: "没有草稿",
+		description: "你正在撰写的邮件会保存在这里。",
 		showCompose: true,
 	},
 	[Folders.ARCHIVE]: {
 		icon: <ArchiveIcon size={48} weight="thin" className="text-kumo-subtle" />,
-		title: "Archive is empty",
+		title: "归档是空的",
 		description:
-			"Move emails here to keep your inbox clean without deleting them.",
+			"把邮件移到这里，既能保持收件箱整洁，又不会删除它们。",
 	},
 	[Folders.TRASH]: {
 		icon: <TrashIcon size={48} weight="thin" className="text-kumo-subtle" />,
-		title: "Trash is empty",
+		title: "废纸篓是空的",
 		description:
-			"Deleted emails will appear here. You can restore them or permanently delete them.",
+			"已删除的邮件会显示在这里。你可以恢复或彻底删除它们。",
 	},
 };
 
@@ -113,8 +113,8 @@ function FolderEmptyState({
 		icon: (
 			<EnvelopeSimpleIcon size={48} weight="thin" className="text-kumo-subtle" />
 		),
-		title: "No emails",
-		description: "This folder is empty.",
+		title: "没有邮件",
+		description: "此文件夹是空的。",
 	};
 
 	return (
@@ -133,7 +133,7 @@ function FolderEmptyState({
 					icon={<PencilSimpleIcon size={16} />}
 					onClick={onCompose}
 				>
-					Compose
+					写邮件
 				</Button>
 			)}
 		</div>
@@ -181,7 +181,7 @@ export default function EmailListRoute() {
 	const folderName = useMemo(() => {
 		const found = folders.find((f) => f.id === folder);
 		if (found) return found.name;
-		return folder ? folder.charAt(0).toUpperCase() + folder.slice(1) : "Inbox";
+		return folder ? folder.charAt(0).toUpperCase() + folder.slice(1) : "收件箱";
 	}, [folders, folder]);
 
 	const isPanelOpen = selectedEmailId !== null || isComposing;
@@ -214,7 +214,7 @@ export default function EmailListRoute() {
 		e.preventDefault();
 		e.stopPropagation();
 		if (mailboxId) {
-			const confirmed = window.confirm("Are you sure you want to delete this email?");
+			const confirmed = window.confirm("确定要删除这封邮件吗？");
 			if (!confirmed) return;
 			deleteEmail.mutate({ mailboxId, id: emailId });
 			if (selectedEmailId === emailId) closePanel();
@@ -281,11 +281,11 @@ export default function EmailListRoute() {
 					<div className="flex items-center gap-1">
 						{totalCount > 0 && (
 							<span className="text-sm text-kumo-subtle mr-2 hidden sm:inline">
-								{totalCount} conversation{totalCount !== 1 ? "s" : ""}
+								{totalCount} 个会话
 							</span>
 						)}
 						<Tooltip
-							content={isRefreshing ? "Refreshing..." : "Refresh"}
+							content={isRefreshing ? "刷新中……" : "刷新"}
 							side="bottom"
 							asChild
 						>
@@ -301,7 +301,7 @@ export default function EmailListRoute() {
 								}
 								onClick={handleRefresh}
 								disabled={isRefreshing}
-								aria-label="Refresh"
+								aria-label="刷新"
 							/>
 						</Tooltip>
 					</div>
@@ -374,11 +374,11 @@ export default function EmailListRoute() {
 												)}
 												{email.has_draft && (
 													<span className="shrink-0 text-xs text-kumo-destructive font-medium">
-														Draft
+														草稿
 													</span>
 												)}
 												{email.needs_reply && !email.has_draft && (
-													<Tooltip content="Needs reply" asChild>
+													<Tooltip content="待回复" asChild>
 														<span className="shrink-0 text-kumo-warning">
 															<ArrowBendUpLeftIcon size={14} weight="bold" />
 														</span>
@@ -404,7 +404,7 @@ export default function EmailListRoute() {
 
 										{/* Hover actions */}
 										<div className="hidden group-hover:flex items-center shrink-0">
-											<Tooltip content={email.read ? "Mark unread" : "Mark read"} asChild>
+											<Tooltip content={email.read ? "标为未读" : "标为已读"} asChild>
 												<Button
 													variant="ghost"
 													shape="square"
@@ -419,17 +419,17 @@ export default function EmailListRoute() {
 																data: { read: !email.read },
 															});
 													}}
-													aria-label={email.read ? "Mark unread" : "Mark read"}
+													aria-label={email.read ? "标为未读" : "标为已读"}
 												/>
 											</Tooltip>
-											<Tooltip content="Delete" asChild>
+											<Tooltip content="删除" asChild>
 												<Button
 													variant="ghost"
 													shape="square"
 													size="sm"
 													icon={<TrashIcon size={14} />}
 													onClick={(e) => handleDelete(e, email.id)}
-													aria-label="Delete"
+													aria-label="删除"
 												/>
 											</Tooltip>
 										</div>
