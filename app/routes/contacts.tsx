@@ -108,7 +108,7 @@ export default function ContactsRoute() {
 
 	return (
 		<div className="h-full overflow-y-auto">
-			<div className="max-w-2xl px-4 py-5 md:px-8 md:py-6">
+			<div className="w-full px-4 py-5 md:px-8 md:py-6">
 				{/* Header: title left, create button top-right */}
 				<div className="mb-5 flex items-center justify-between gap-4">
 					<div>

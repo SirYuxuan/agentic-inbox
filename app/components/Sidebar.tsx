@@ -4,6 +4,7 @@
 
 import {
 	AddressBookIcon,
+	CaretDownIcon,
 	ArchiveIcon,
 	CaretLeftIcon,
 	FileIcon,
@@ -14,8 +15,8 @@ import {
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
-import { useMemo, useState } from "react";
-import { NavLink, useNavigate, useParams } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { NavLink, useLocation, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -30,9 +31,13 @@ import {
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Tooltip } from "~/components/ui/tooltip";
+import {
+	readMailboxOrder,
+	sortMailboxesByOrder,
+} from "~/lib/mailbox-order";
 import { cn } from "~/lib/utils";
 import { useCreateFolder, useFolders } from "~/queries/folders";
-import { useMailbox } from "~/queries/mailboxes";
+import { useMailbox, useMailboxes } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
 const FOLDER_ICONS: Record<string, React.ReactNode> = {
@@ -87,12 +92,32 @@ function FolderLink({ to, icon, label, unreadCount, onClick }: FolderLinkProps) 
 export default function Sidebar() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const navigate = useNavigate();
+	const location = useLocation();
 	const { data: folders = [] } = useFolders(mailboxId);
 	const createFolderMutation = useCreateFolder();
 	const { startCompose, closeSidebar } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
+	const { data: mailboxes = [] } = useMailboxes();
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
+	const [isMailboxSwitcherOpen, setIsMailboxSwitcherOpen] = useState(false);
+	const [mailboxOrder, setMailboxOrder] = useState<string[]>([]);
+	const switcherRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		setMailboxOrder(readMailboxOrder());
+	}, []);
+
+	useEffect(() => {
+		if (!isMailboxSwitcherOpen) return;
+		const handlePointerDown = (event: PointerEvent) => {
+			if (!switcherRef.current?.contains(event.target as Node)) {
+				setIsMailboxSwitcherOpen(false);
+			}
+		};
+		document.addEventListener("pointerdown", handlePointerDown);
+		return () => document.removeEventListener("pointerdown", handlePointerDown);
+	}, [isMailboxSwitcherOpen]);
 
 	const customFolders = useMemo(
 		() =>
@@ -123,6 +148,27 @@ export default function Sidebar() {
 		return currentMailbox.email.split("@")[0] || currentMailbox.name;
 	}, [currentMailbox, mailboxId]);
 
+	const orderedMailboxes = useMemo(
+		() => sortMailboxesByOrder(mailboxes, mailboxOrder),
+		[mailboxes, mailboxOrder],
+	);
+
+	const getMailboxDisplayName = (mailbox: typeof mailboxes[number]) => {
+		if (mailbox.settings?.fromName) return mailbox.settings.fromName;
+		if (mailbox.name && mailbox.name !== mailbox.email) return mailbox.name;
+		return mailbox.email.split("@")[0] || mailbox.email;
+	};
+
+	const switchMailbox = (nextMailboxId: string) => {
+		const currentPrefix = mailboxId ? `/mailbox/${mailboxId}` : "";
+		const currentSuffix = currentPrefix && location.pathname.startsWith(currentPrefix)
+			? location.pathname.slice(currentPrefix.length) || "/emails/inbox"
+			: "/emails/inbox";
+		navigate(`/mailbox/${nextMailboxId}${currentSuffix}${location.search}`);
+		setIsMailboxSwitcherOpen(false);
+		closeSidebar();
+	};
+
 	const handleNavClick = () => closeSidebar();
 
 	return (
@@ -140,19 +186,66 @@ export default function Sidebar() {
 					<CaretLeftIcon size={14} />
 					<span>邮箱列表</span>
 				</button>
-				<div className="flex items-center gap-2.5 px-1">
-					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
-						{displayName.charAt(0).toUpperCase()}
-					</div>
-					<div className="min-w-0">
-						<div className="truncate text-sm font-semibold text-foreground">
-							{displayName}
+				<div ref={switcherRef} className="relative">
+					<button
+						type="button"
+						onClick={() => setIsMailboxSwitcherOpen((open) => !open)}
+						className="flex w-full items-center gap-2.5 rounded-md border-0 bg-transparent px-1 py-1 text-left transition-colors hover:bg-accent/60"
+						aria-label="切换邮箱"
+						aria-expanded={isMailboxSwitcherOpen}
+					>
+						<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
+							{displayName.charAt(0).toUpperCase()}
 						</div>
-						<div className="truncate text-xs text-muted-foreground">
-							{currentMailbox?.email || mailboxId}
+						<div className="min-w-0 flex-1">
+							<div className="truncate text-sm font-semibold text-foreground">
+								{displayName}
+							</div>
+							<div className="truncate text-xs text-muted-foreground">
+								{currentMailbox?.email || mailboxId}
+							</div>
 						</div>
+						<CaretDownIcon
+							size={14}
+							className={cn(
+								"shrink-0 text-muted-foreground transition-transform",
+								isMailboxSwitcherOpen && "rotate-180",
+							)}
+						/>
+					</button>
+
+					{isMailboxSwitcherOpen && (
+						<div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg">
+							{orderedMailboxes.map((mailbox) => {
+								const name = getMailboxDisplayName(mailbox);
+								const isCurrent = mailbox.id === mailboxId;
+								return (
+									<button
+										key={mailbox.id}
+										type="button"
+										onClick={() => switchMailbox(mailbox.id)}
+										className={cn(
+											"flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors",
+											isCurrent
+												? "bg-accent text-accent-foreground"
+												: "text-popover-foreground hover:bg-accent/60",
+										)}
+									>
+										<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground">
+											{name.charAt(0).toUpperCase()}
+										</div>
+										<div className="min-w-0 flex-1">
+											<div className="truncate font-medium">{name}</div>
+											<div className="truncate text-xs text-muted-foreground">
+												{mailbox.email}
+											</div>
+										</div>
+									</button>
+								);
+							})}
+						</div>
+					)}
 					</div>
-				</div>
 			</div>
 
 			{/* Compose */}

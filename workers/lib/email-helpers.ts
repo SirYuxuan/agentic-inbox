@@ -36,12 +36,20 @@ export function getMailboxStub(
  */
 export async function listMailboxes(
 	bucket: R2Bucket,
-): Promise<{ id: string; email: string }[]> {
+): Promise<{ id: string; email: string; name: string; settings: Record<string, unknown> }[]> {
 	const list = await bucket.list({ prefix: "mailboxes/" });
-	return list.objects.map((obj) => {
+	return Promise.all(list.objects.map(async (obj) => {
 		const id = obj.key.replace("mailboxes/", "").replace(".json", "");
-		return { id, email: id };
-	});
+		let settings: Record<string, unknown> = {};
+		try {
+			const stored = await bucket.get(obj.key);
+			settings = stored ? await stored.json<Record<string, unknown>>() : {};
+		} catch {
+			settings = {};
+		}
+		const fromName = typeof settings.fromName === "string" ? settings.fromName.trim() : "";
+		return { id, email: id, name: fromName || id, settings };
+	}));
 }
 
 // ── Sender Validation ──────────────────────────────────────────────

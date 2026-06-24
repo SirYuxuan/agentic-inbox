@@ -3,9 +3,9 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useKumoToastManager } from "@cloudflare/kumo";
-import { Inbox, Loader2, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, GripVertical, Inbox, Loader2, Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -22,11 +22,20 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import api from "~/services/api";
 import {
+	getMailboxOrderKey,
+	readMailboxOrder,
+	sortMailboxesByOrder,
+	writeMailboxOrder,
+	type MailboxListItem,
+} from "~/lib/mailbox-order";
+import {
 	useCreateMailbox,
 	useDeleteMailbox,
 	useMailboxes,
 } from "~/queries/mailboxes";
 import { queryKeys } from "~/queries/keys";
+
+const MAILBOX_PAGE_SIZE = 8;
 
 export function meta() {
 	return [{ title: "Agentic Inbox" }];
@@ -59,6 +68,14 @@ export default function HomeRoute() {
 		email: string;
 	} | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [mailboxOrder, setMailboxOrder] = useState<string[]>([]);
+	const [page, setPage] = useState(1);
+	const [draggedEmail, setDraggedEmail] = useState<string | null>(null);
+	const [dragOverEmail, setDragOverEmail] = useState<string | null>(null);
+
+	useEffect(() => {
+		setMailboxOrder(readMailboxOrder());
+	}, []);
 
 	// Set default domain when config loads
 	useEffect(() => {
@@ -133,13 +150,47 @@ export default function HomeRoute() {
 	};
 
 	const isConfigured = emailAddresses.length > 0;
-	const accounts = isConfigured
-		? emailAddresses.map((addr) => ({
-				id: addr,
-				email: addr,
-				name: addr.split("@")[0] || addr,
-			}))
+	const mailboxesByEmail = new Map(
+		mailboxes.map((mailbox) => [mailbox.email.toLowerCase(), mailbox]),
+	);
+	const accounts: MailboxListItem[] = isConfigured
+		? emailAddresses.map((addr) => {
+				const mailbox = mailboxesByEmail.get(addr.toLowerCase());
+				const localPart = addr.split("@")[0] || addr;
+				return {
+					id: mailbox?.id ?? addr,
+					email: addr,
+					name: mailbox?.settings?.fromName || mailbox?.name || localPart,
+					settings: mailbox?.settings,
+				};
+			})
 		: mailboxes;
+	const orderedAccounts = useMemo(
+		() => sortMailboxesByOrder(accounts, mailboxOrder),
+		[accounts, mailboxOrder],
+	);
+	const pageCount = Math.max(1, Math.ceil(orderedAccounts.length / MAILBOX_PAGE_SIZE));
+	const visibleAccounts = orderedAccounts.slice(
+		(page - 1) * MAILBOX_PAGE_SIZE,
+		page * MAILBOX_PAGE_SIZE,
+	);
+
+	useEffect(() => {
+		setPage((current) => Math.min(current, pageCount));
+	}, [pageCount]);
+
+	const moveMailbox = (sourceEmail: string, targetEmail: string) => {
+		if (sourceEmail === targetEmail) return;
+		const currentOrder = orderedAccounts.map(getMailboxOrderKey);
+		const sourceIndex = currentOrder.indexOf(sourceEmail);
+		const targetIndex = currentOrder.indexOf(targetEmail);
+		if (sourceIndex === -1 || targetIndex === -1) return;
+		const nextOrder = [...currentOrder];
+		const [moved] = nextOrder.splice(sourceIndex, 1);
+		nextOrder.splice(targetIndex, 0, moved);
+		setMailboxOrder(nextOrder);
+		writeMailboxOrder(nextOrder);
+	};
 
 	const isLoading = !configData;
 
@@ -167,16 +218,49 @@ export default function HomeRoute() {
 					<div className="flex justify-center py-24">
 						<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 					</div>
-				) : accounts.length > 0 ? (
+				) : orderedAccounts.length > 0 ? (
+					<>
 					<div className="overflow-hidden rounded-xl border border-border bg-card">
-						{accounts.map((account, idx) => (
+						{visibleAccounts.map((account, idx) => {
+							const orderKey = getMailboxOrderKey(account);
+							return (
 							<RouterLink
 								key={account.id}
 								to={`/mailbox/${account.id}`}
-								className={`group flex items-center gap-3.5 px-4 py-3 no-underline transition-colors hover:bg-accent ${
+								draggable
+								onDragStart={(e) => {
+									e.dataTransfer.effectAllowed = "move";
+									e.dataTransfer.setData("text/plain", orderKey);
+									setDraggedEmail(orderKey);
+								}}
+								onDragOver={(e) => {
+									e.preventDefault();
+									e.dataTransfer.dropEffect = "move";
+									setDragOverEmail(orderKey);
+								}}
+								onDragLeave={() => {
+									setDragOverEmail((current) => current === orderKey ? null : current);
+								}}
+								onDrop={(e) => {
+									e.preventDefault();
+									const sourceEmail = e.dataTransfer.getData("text/plain") || draggedEmail;
+									if (sourceEmail) moveMailbox(sourceEmail, orderKey);
+									setDraggedEmail(null);
+									setDragOverEmail(null);
+								}}
+								onDragEnd={() => {
+									setDraggedEmail(null);
+									setDragOverEmail(null);
+								}}
+								className={`group flex items-center gap-3 px-4 py-3 no-underline transition-colors hover:bg-accent ${
 									idx > 0 ? "border-t border-border" : ""
+								} ${
+									dragOverEmail === orderKey && draggedEmail !== orderKey ? "bg-accent/70" : ""
+								} ${
+									draggedEmail === orderKey ? "opacity-60" : ""
 								}`}
 							>
+								<GripVertical className="h-4 w-4 shrink-0 text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100" />
 								<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
 									{account.name.charAt(0).toUpperCase()}
 								</div>
@@ -208,8 +292,35 @@ export default function HomeRoute() {
 									</Button>
 								)}
 							</RouterLink>
-						))}
+							);
+						})}
 					</div>
+					{pageCount > 1 && (
+						<div className="mt-4 flex items-center justify-center gap-2">
+							<Button
+								variant="outline"
+								size="icon-sm"
+								aria-label="上一页"
+								disabled={page === 1}
+								onClick={() => setPage((current) => Math.max(1, current - 1))}
+							>
+								<ChevronLeft className="h-4 w-4" />
+							</Button>
+							<div className="min-w-16 text-center text-xs text-muted-foreground">
+								{page} / {pageCount}
+							</div>
+							<Button
+								variant="outline"
+								size="icon-sm"
+								aria-label="下一页"
+								disabled={page === pageCount}
+								onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+							>
+								<ChevronRight className="h-4 w-4" />
+							</Button>
+						</div>
+					)}
+					</>
 				) : (
 					<div className="rounded-xl border border-border bg-card px-6 py-16">
 						<div className="flex flex-col items-center text-center">

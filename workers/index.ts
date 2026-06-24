@@ -177,7 +177,7 @@ app.delete("/api/v1/contacts/:id", async (c) => {
 
 app.get("/api/v1/mailboxes", async (c) => {
 	const allMailboxes = await listMailboxes(c.env.BUCKET);
-	return c.json(allMailboxes.map((m) => ({ ...m, name: m.id })));
+	return c.json(allMailboxes);
 });
 
 app.post("/api/v1/mailboxes", async (c) => {
