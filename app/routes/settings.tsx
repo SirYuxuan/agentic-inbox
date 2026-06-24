@@ -122,12 +122,11 @@ export default function SettingsRoute() {
 						</div>
 					</div>
 
-					{/* Trusted image senders */}
-					<div className="rounded-xl border border-border bg-card p-5">
-						<div className="mb-3 text-sm font-medium text-foreground">
-							已信任图片发件人
-						</div>
-						{trustedImageSenders.length > 0 ? (
+					{trustedImageSenders.length > 0 && (
+						<div className="rounded-xl border border-border bg-card p-5">
+							<div className="mb-3 text-sm font-medium text-foreground">
+								已信任图片发件人
+							</div>
 							<div className="space-y-2">
 								{trustedImageSenders.map((sender) => (
 									<div
@@ -149,10 +148,8 @@ export default function SettingsRoute() {
 									</div>
 								))}
 							</div>
-						) : (
-							<div className="text-sm text-muted-foreground">暂无信任的发件人</div>
-						)}
-					</div>
+						</div>
+					)}
 
 					{/* Agent system prompt */}
 					<div className="rounded-xl border border-border bg-card p-5">

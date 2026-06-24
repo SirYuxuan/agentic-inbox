@@ -423,7 +423,7 @@ export default function HomeRoute() {
 															{account.name}
 														</div>
 														{unreadCount > 0 && (
-															<Badge variant="secondary" className="h-5 min-w-5 shrink-0 justify-center rounded-full px-1.5">
+															<Badge className="h-5 min-w-5 shrink-0 justify-center rounded-full bg-red-600 px-1.5 text-white hover:bg-red-600">
 																{unreadCount}
 															</Badge>
 														)}
