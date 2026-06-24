@@ -6,6 +6,7 @@ import { Banner, Button, Dialog, Input, Text } from "@cloudflare/kumo";
 import { FloppyDiskIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react";
 import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
+import RecipientInput from "./RecipientInput";
 import RichTextEditor from "./RichTextEditor";
 import { useUIStore } from "~/hooks/useUIStore";
 
@@ -51,13 +52,11 @@ export default function ComposeEmail() {
 					{error && <Banner variant="error" text={error} />}
 					<div className="flex items-center gap-2">
 						<div className="flex-1">
-							<Input
+							<RecipientInput
 								label="收件人"
-								type="text"
 								placeholder="recipient@example.com, another@example.com"
-								size="sm"
 								value={to}
-								onChange={(e) => setTo(e.target.value)}
+								onChange={setTo}
 								required
 							/>
 						</div>
@@ -72,22 +71,18 @@ export default function ComposeEmail() {
 						)}
 					</div>
 					{showCcBcc && (
-						<Input
+						<RecipientInput
 							label="抄送"
-							type="text"
-							size="sm"
 							value={cc}
-							onChange={(e) => setCc(e.target.value)}
+							onChange={setCc}
 							placeholder="多个地址用逗号分隔"
 						/>
 					)}
 					{showCcBcc && (
-						<Input
+						<RecipientInput
 							label="密送"
-							type="text"
-							size="sm"
 							value={bcc}
-							onChange={(e) => setBcc(e.target.value)}
+							onChange={setBcc}
 							placeholder="多个地址用逗号分隔"
 						/>
 					)}

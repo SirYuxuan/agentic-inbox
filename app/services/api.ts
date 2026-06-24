@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox } from "~/types";
+import type { Contact, Email, Folder, Mailbox } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -160,6 +160,14 @@ const api = {
 	// Search
 	searchEmails: (mailboxId: string, params: Record<string, string>) =>
 		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/search`, { params }),
+
+	// Contacts (global address book)
+	listContacts: () => get<Contact[]>("/api/v1/contacts"),
+	createContact: (name: string, email: string) =>
+		post<Contact>("/api/v1/contacts", { name, email }),
+	updateContact: (id: string, name: string, email: string) =>
+		put<Contact>(`/api/v1/contacts/${id}`, { name, email }),
+	deleteContact: (id: string) => del<void>(`/api/v1/contacts/${id}`),
 };
 
 export default api;

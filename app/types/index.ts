@@ -14,6 +14,8 @@ export interface MailboxSettings {
 	signature?: SignatureSettings;
 	autoReply?: { enabled: boolean; subject: string; message: string };
 	agentSystemPrompt?: string;
+	/** When false, skip auto-drafting an AI reply on new inbound email. Defaults to enabled. */
+	autoDraftEnabled?: boolean;
 }
 
 export interface Mailbox {
@@ -21,6 +23,13 @@ export interface Mailbox {
 	email: string;
 	name: string;
 	settings?: MailboxSettings;
+}
+
+/** A global address-book contact, shared across all mailboxes. */
+export interface Contact {
+	id: string;
+	name: string;
+	email: string;
 }
 
 export interface Email {

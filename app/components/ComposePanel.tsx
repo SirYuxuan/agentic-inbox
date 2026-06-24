@@ -6,6 +6,7 @@ import { Banner, Button, Input } from "@cloudflare/kumo";
 import { FloppyDiskIcon, PaperPlaneTiltIcon, XIcon } from "@phosphor-icons/react";
 import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
+import RecipientInput from "./RecipientInput";
 import RichTextEditor from "./RichTextEditor";
 
 export default function ComposePanel() {
@@ -69,14 +70,14 @@ export default function ComposePanel() {
 								收件人
 							</label>
 							<div className="flex-1 flex items-center gap-2 min-w-0">
-								<Input
-									type="text"
-									placeholder="recipient@example.com"
-									size="sm"
-									value={to}
-									onChange={(e) => setTo(e.target.value)}
-									required
-								/>
+								<div className="flex-1 min-w-0">
+									<RecipientInput
+										placeholder="recipient@example.com"
+										value={to}
+										onChange={setTo}
+										required
+									/>
+								</div>
 								{!showCcBcc && (
 									<button
 										type="button"
@@ -95,11 +96,9 @@ export default function ComposePanel() {
 									抄送
 								</label>
 								<div className="flex-1">
-									<Input
-										type="text"
-										size="sm"
+									<RecipientInput
 										value={cc}
-										onChange={(e) => setCc(e.target.value)}
+										onChange={setCc}
 										placeholder="多个地址用逗号分隔"
 									/>
 								</div>
@@ -112,11 +111,9 @@ export default function ComposePanel() {
 									密送
 								</label>
 								<div className="flex-1">
-									<Input
-										type="text"
-										size="sm"
+									<RecipientInput
 										value={bcc}
-										onChange={(e) => setBcc(e.target.value)}
+										onChange={setBcc}
 										placeholder="多个地址用逗号分隔"
 									/>
 								</div>

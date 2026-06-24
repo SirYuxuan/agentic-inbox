@@ -92,6 +92,87 @@ app.get("/api/v1/config", (c) => {
 	return c.json({ domains, emailAddresses });
 });
 
+// -- Contacts (global address book, shared across all mailboxes) -----
+// Stored as a single JSON array in R2 at `contacts.json`. Single-user
+// usage means a read-modify-write of the whole file is fine.
+
+const CONTACTS_KEY = "contacts.json";
+
+const ContactBody = z.object({
+	name: z.string().trim().min(1),
+	email: z.string().trim().email(),
+});
+
+interface Contact {
+	id: string;
+	name: string;
+	email: string;
+}
+
+async function readContacts(env: Env): Promise<Contact[]> {
+	const obj = await env.BUCKET.get(CONTACTS_KEY);
+	if (!obj) return [];
+	try {
+		const parsed = await obj.json<Contact[]>();
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
+async function writeContacts(env: Env, contacts: Contact[]): Promise<void> {
+	await env.BUCKET.put(CONTACTS_KEY, JSON.stringify(contacts));
+}
+
+app.get("/api/v1/contacts", async (c) => {
+	const contacts = await readContacts(c.env);
+	contacts.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN"));
+	return c.json(contacts);
+});
+
+app.post("/api/v1/contacts", async (c) => {
+	const parsed = ContactBody.safeParse(await c.req.json());
+	if (!parsed.success) return c.json({ error: "请填写有效的姓名和邮箱" }, 400);
+	const { name } = parsed.data;
+	const email = parsed.data.email.toLowerCase();
+
+	const contacts = await readContacts(c.env);
+	if (contacts.some((ct) => ct.email === email)) {
+		return c.json({ error: "该邮箱已存在于通讯录中" }, 409);
+	}
+	const contact: Contact = { id: crypto.randomUUID(), name, email };
+	contacts.push(contact);
+	await writeContacts(c.env, contacts);
+	return c.json(contact, 201);
+});
+
+app.put("/api/v1/contacts/:id", async (c) => {
+	const id = c.req.param("id");
+	const parsed = ContactBody.safeParse(await c.req.json());
+	if (!parsed.success) return c.json({ error: "请填写有效的姓名和邮箱" }, 400);
+	const { name } = parsed.data;
+	const email = parsed.data.email.toLowerCase();
+
+	const contacts = await readContacts(c.env);
+	const idx = contacts.findIndex((ct) => ct.id === id);
+	if (idx === -1) return c.json({ error: "联系人不存在" }, 404);
+	if (contacts.some((ct) => ct.email === email && ct.id !== id)) {
+		return c.json({ error: "该邮箱已存在于通讯录中" }, 409);
+	}
+	contacts[idx] = { id, name, email };
+	await writeContacts(c.env, contacts);
+	return c.json(contacts[idx]);
+});
+
+app.delete("/api/v1/contacts/:id", async (c) => {
+	const id = c.req.param("id");
+	const contacts = await readContacts(c.env);
+	const next = contacts.filter((ct) => ct.id !== id);
+	if (next.length === contacts.length) return c.json({ error: "联系人不存在" }, 404);
+	await writeContacts(c.env, next);
+	return c.body(null, 204);
+});
+
 // -- Mailboxes ------------------------------------------------------
 
 app.get("/api/v1/mailboxes", async (c) => {
@@ -402,11 +483,28 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsedEmail.headers),
 	}, attachmentData);
 
-	const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
-	ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {
-		method: "POST", headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ mailboxId, emailId: messageId, sender: (parsedEmail.from?.address || "").toLowerCase(), subject: parsedEmail.subject || "", threadId }),
-	})).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)));
+	// Auto-draft an AI reply, unless disabled in the mailbox settings.
+	// Absent/true => enabled (preserves existing behavior); only an explicit
+	// `autoDraftEnabled: false` skips the trigger. The email is already stored
+	// above, so receiving is unaffected either way.
+	let autoDraftEnabled = true;
+	try {
+		const settingsObj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+		if (settingsObj) {
+			const settings = await settingsObj.json<Record<string, unknown>>();
+			if (settings.autoDraftEnabled === false) autoDraftEnabled = false;
+		}
+	} catch {
+		// On settings read failure, fall back to enabled.
+	}
+
+	if (autoDraftEnabled) {
+		const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
+		ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {
+			method: "POST", headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ mailboxId, emailId: messageId, sender: (parsedEmail.from?.address || "").toLowerCase(), subject: parsedEmail.subject || "", threadId }),
+		})).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)));
+	}
 }
 
 export { app, receiveEmail };

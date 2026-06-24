@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Badge, Button, Input, Loader, useKumoToastManager } from "@cloudflare/kumo";
+import { Badge, Button, Input, Loader, Switch, useKumoToastManager } from "@cloudflare/kumo";
 import { RobotIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
@@ -20,12 +20,15 @@ export default function SettingsRoute() {
 
 	const [displayName, setDisplayName] = useState("");
 	const [agentPrompt, setAgentPrompt] = useState("");
+	const [autoDraft, setAutoDraft] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
 
 	useEffect(() => {
 		if (mailbox) {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
+			// Absent => enabled by default.
+			setAutoDraft(mailbox.settings?.autoDraftEnabled !== false);
 		}
 	}, [mailbox]);
 
@@ -36,6 +39,7 @@ export default function SettingsRoute() {
 			...mailbox.settings,
 			fromName: displayName,
 			agentSystemPrompt: agentPrompt.trim() || undefined,
+			autoDraftEnabled: autoDraft,
 		};
 		try {
 			await updateMailboxMutation.mutateAsync({ mailboxId, settings });
@@ -81,6 +85,25 @@ export default function SettingsRoute() {
 							onChange={(e) => setDisplayName(e.target.value)}
 						/>
 						<Input label="邮箱" type="email" value={mailbox.email} disabled />
+					</div>
+				</div>
+
+				{/* Auto-draft */}
+				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+					<div className="flex items-center justify-between gap-4">
+						<div className="min-w-0">
+							<div className="text-sm font-medium text-kumo-default">
+								新邮件自动起草回复
+							</div>
+							<p className="text-xs text-kumo-subtle mt-1">
+								收到新邮件时，让 AI 助手自动起草一封回复草稿（不会自动发送）。关闭后仍可正常收信，并随时手动让助手起草。
+							</p>
+						</div>
+						<Switch
+							checked={autoDraft}
+							onCheckedChange={setAutoDraft}
+							aria-label="新邮件自动起草回复"
+						/>
 					</div>
 				</div>
 
