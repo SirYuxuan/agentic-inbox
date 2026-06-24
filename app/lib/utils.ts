@@ -96,6 +96,40 @@ export function hasRemoteImages(html?: string | null): boolean {
 	return /<img\b[^>]+(?:src|srcset)\s*=\s*["']?\s*https?:\/\//i.test(html);
 }
 
+function getImgAttribute(tag: string, name: string): string | null {
+	const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+	return match ? (match[1] ?? match[2] ?? match[3] ?? "") : null;
+}
+
+function getCssDimension(style: string, name: string): number | null {
+	const match = style.match(new RegExp(`${name}\\s*:\\s*(\\d+(?:\\.\\d+)?)px?`, "i"));
+	return match ? Number(match[1]) : null;
+}
+
+export function hasVisibleRemoteImages(html?: string | null): boolean {
+	if (!html) return false;
+	const remoteImgTags = html.match(/<img\b[^>]*(?:src|srcset)\s*=\s*["']?\s*https?:\/\/[^>]*>/gi) ?? [];
+
+	return remoteImgTags.some((tag) => {
+		if (/\bhidden\b/i.test(tag)) return false;
+		const style = getImgAttribute(tag, "style") || "";
+		if (/display\s*:\s*none/i.test(style)) return false;
+		if (/visibility\s*:\s*hidden/i.test(style)) return false;
+		if (/opacity\s*:\s*0(?:\.0+)?(?:\s|;|$)/i.test(style)) return false;
+
+		const widthAttr = Number(getImgAttribute(tag, "width"));
+		const heightAttr = Number(getImgAttribute(tag, "height"));
+		const width = Number.isFinite(widthAttr) && widthAttr > 0
+			? widthAttr
+			: getCssDimension(style, "width");
+		const height = Number.isFinite(heightAttr) && heightAttr > 0
+			? heightAttr
+			: getCssDimension(style, "height");
+
+		return !(width != null && height != null && width <= 1 && height <= 1);
+	});
+}
+
 function decodeHtmlEntities(text: string): string {
 	return text
 		.replace(/&#(\d+);/g, (_match: string, code: string) =>

@@ -5,7 +5,7 @@
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
 import RemoteImageNotice from "~/components/email-panel/RemoteImageNotice";
-import { formatDetailDate, hasRemoteImages, rewriteInlineImages } from "~/lib/utils";
+import { formatDetailDate, hasVisibleRemoteImages, rewriteInlineImages } from "~/lib/utils";
 import type { Email, EmailTranslation } from "~/types";
 
 interface SingleMessageViewProps {
@@ -27,7 +27,7 @@ export default function SingleMessageView({
 	onTrustSender,
 	onPreviewImage,
 }: SingleMessageViewProps) {
-	const showRemoteImageNotice = hasRemoteImages(email.body) && !allowRemoteImages;
+	const showRemoteImageNotice = hasVisibleRemoteImages(email.body) && !allowRemoteImages;
 	const body = translation?.bodyHtml || email.body || "";
 
 	return (

@@ -20,7 +20,7 @@ import { cn } from "~/lib/utils";
 import {
 	formatDetailDate,
 	formatShortDate,
-	hasRemoteImages,
+	hasVisibleRemoteImages,
 	rewriteInlineImages,
 	stripHtml,
 } from "~/lib/utils";
@@ -88,7 +88,7 @@ export default function ThreadMessage({
 		isDraft && "border-l-2 border-l-amber-500 bg-amber-500/[0.03]",
 	);
 	const senderLabel = isDraft ? "草稿回复" : isSelf ? "我" : email.sender;
-	const showRemoteImageNotice = hasRemoteImages(email.body) && !allowRemoteImages;
+	const showRemoteImageNotice = hasVisibleRemoteImages(email.body) && !allowRemoteImages;
 	const body = translation?.bodyHtml || email.body || "";
 
 	if (!isExpanded) {

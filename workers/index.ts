@@ -36,6 +36,10 @@ const MailboxOrderBody = z.object({
 	order: z.array(z.string().email()),
 });
 
+const TrustedImageSendersBody = z.object({
+	senders: z.array(z.string().email()),
+});
+
 const DraftBody = z.object({
 	to: z.string().optional(),
 	cc: z.string().optional(),
@@ -103,6 +107,7 @@ app.get("/api/v1/config", (c) => {
 
 const CONTACTS_KEY = "contacts.json";
 const MAILBOX_ORDER_KEY = "settings/mailbox-order.json";
+const TRUSTED_IMAGE_SENDERS_KEY = "settings/trusted-image-senders.json";
 
 const ContactBody = z.object({
 	name: z.string().trim().min(1),
@@ -128,6 +133,47 @@ async function readContacts(env: Env): Promise<Contact[]> {
 
 async function writeContacts(env: Env, contacts: Contact[]): Promise<void> {
 	await env.BUCKET.put(CONTACTS_KEY, JSON.stringify(contacts));
+}
+
+async function readTrustedImageSenders(env: Env): Promise<string[]> {
+	const obj = await env.BUCKET.get(TRUSTED_IMAGE_SENDERS_KEY);
+	if (!obj) {
+		const mailboxes = await listMailboxes(env.BUCKET);
+		return Array.from(
+			new Set(
+				mailboxes.flatMap((mailbox) => {
+					const senders = mailbox.settings.trustedImageSenders;
+					return Array.isArray(senders)
+						? senders.filter((item): item is string => typeof item === "string")
+						: [];
+				}).map((sender) => sender.toLowerCase()),
+			),
+		);
+	}
+	try {
+		const parsed = await obj.json<{ senders?: unknown }>();
+		return Array.isArray(parsed.senders)
+			? parsed.senders.filter((item): item is string => typeof item === "string")
+			: [];
+	} catch {
+		return [];
+	}
+}
+
+async function writeTrustedImageSenders(env: Env, senders: string[]): Promise<string[]> {
+	const normalized = Array.from(new Set(senders.map((sender) => sender.toLowerCase())));
+	await env.BUCKET.put(TRUSTED_IMAGE_SENDERS_KEY, JSON.stringify({ senders: normalized }));
+	return normalized;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+	const digest = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(value),
+	);
+	return Array.from(new Uint8Array(digest))
+		.map((byte) => byte.toString(16).padStart(2, "0"))
+		.join("");
 }
 
 app.get("/api/v1/contacts", async (c) => {
@@ -177,6 +223,19 @@ app.delete("/api/v1/contacts/:id", async (c) => {
 	if (next.length === contacts.length) return c.json({ error: "联系人不存在" }, 404);
 	await writeContacts(c.env, next);
 	return c.body(null, 204);
+});
+
+// -- Global trusted image senders -----------------------------------
+
+app.get("/api/v1/trusted-image-senders", async (c) => {
+	return c.json({ senders: await readTrustedImageSenders(c.env) });
+});
+
+app.put("/api/v1/trusted-image-senders", async (c) => {
+	const parsed = TrustedImageSendersBody.safeParse(await c.req.json());
+	if (!parsed.success) return c.json({ error: "Invalid trusted senders" }, 400);
+	const senders = await writeTrustedImageSenders(c.env, parsed.data.senders);
+	return c.json({ senders });
 });
 
 // -- Mailboxes ------------------------------------------------------
@@ -231,7 +290,7 @@ app.post("/api/v1/mailboxes", async (c) => {
 	}
 	const key = `mailboxes/${email}.json`;
 	if (await c.env.BUCKET.head(key)) return c.json({ error: "Mailbox already exists" }, 409);
-	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" }, trustedImageSenders: [] };
+	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" } };
 	const finalSettings = { ...defaultSettings, ...settings };
 	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
 	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(email));
@@ -379,14 +438,37 @@ app.post("/api/v1/mailboxes/:mailboxId/emails/:id/move", async (c: AppContext) =
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/translate", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const emailId = c.req.param("id")!;
 	const email = await c.var.mailboxStub.getEmail(c.req.param("id")!);
 	if (!email) return c.json({ error: "Email not found" }, 404);
 
 	try {
+		const sourceHash = await sha256Hex(`${email.subject || ""}\n${email.body || ""}`);
+		const cacheKey = `translations/${mailboxId}/${emailId}.json`;
+		const cachedObj = await c.env.BUCKET.get(cacheKey);
+		if (cachedObj) {
+			const cached = await cachedObj.json<{
+				sourceHash?: string;
+				translation?: unknown;
+			}>();
+			if (cached.sourceHash === sourceHash && cached.translation) {
+				return c.json(cached.translation);
+			}
+		}
+
 		const translation = await translateEmailContent(c.env.AI, {
 			subject: email.subject,
 			body: email.body,
 		});
+		await c.env.BUCKET.put(
+			cacheKey,
+			JSON.stringify({
+				sourceHash,
+				translatedAt: new Date().toISOString(),
+				translation,
+			}),
+		);
 		return c.json(translation);
 	} catch (e) {
 		console.error("Email translation failed:", (e as Error).message);

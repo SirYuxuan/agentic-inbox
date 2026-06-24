@@ -98,6 +98,10 @@ const api = {
 	// Config
 	getConfig: () =>
 		get<{ domains: string[]; emailAddresses: string[] }>("/api/v1/config"),
+	getTrustedImageSenders: () =>
+		get<{ senders: string[] }>("/api/v1/trusted-image-senders"),
+	updateTrustedImageSenders: (senders: string[]) =>
+		put<{ senders: string[] }>("/api/v1/trusted-image-senders", { senders }),
 
 	// Mailboxes
 	listMailboxes: () => get<Mailbox[]>("/api/v1/mailboxes"),

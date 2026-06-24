@@ -4,6 +4,7 @@
 
 import { useKumoToastManager } from "@cloudflare/kumo";
 import { ArrowCounterClockwiseIcon, RobotIcon, XIcon } from "@phosphor-icons/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
@@ -14,6 +15,7 @@ import { Label } from "~/components/ui/label";
 import { Switch } from "~/components/ui/switch";
 import { normalizeEmailAddress } from "~/lib/utils";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
+import api from "~/services/api";
 
 // Placeholder shown in the textarea when no custom prompt is set.
 // The authoritative default prompt lives in workers/agent/index.ts (DEFAULT_SYSTEM_PROMPT).
@@ -24,6 +26,17 @@ export default function SettingsRoute() {
 	const toastManager = useKumoToastManager();
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
+	const queryClient = useQueryClient();
+	const { data: trustedImageSenderData } = useQuery({
+		queryKey: ["trusted-image-senders"],
+		queryFn: () => api.getTrustedImageSenders(),
+	});
+	const updateTrustedImageSenders = useMutation({
+		mutationFn: (senders: string[]) => api.updateTrustedImageSenders(senders),
+		onSuccess: (data) => {
+			queryClient.setQueryData(["trusted-image-senders"], data);
+		},
+	});
 
 	const [displayName, setDisplayName] = useState("");
 	const [agentPrompt, setAgentPrompt] = useState("");
@@ -36,26 +49,37 @@ export default function SettingsRoute() {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
 			setAutoDraft(mailbox.settings?.autoDraftEnabled !== false);
+		}
+	}, [mailbox]);
+
+	useEffect(() => {
+		if (trustedImageSenderData) {
 			setTrustedImageSenders(
-				(mailbox.settings?.trustedImageSenders ?? [])
+				trustedImageSenderData.senders
 					.map(normalizeEmailAddress)
 					.filter(Boolean),
 			);
 		}
-	}, [mailbox]);
+	}, [trustedImageSenderData]);
 
 	const handleSave = async () => {
 		if (!mailbox || !mailboxId) return;
 		setIsSaving(true);
+		const { trustedImageSenders: _oldTrustedImageSenders, ...mailboxSettings } =
+			mailbox.settings ?? {};
 		const settings = {
-			...mailbox.settings,
+			...mailboxSettings,
 			fromName: displayName,
 			agentSystemPrompt: agentPrompt.trim() || undefined,
 			autoDraftEnabled: autoDraft,
-			trustedImageSenders,
 		};
 		try {
-			await updateMailboxMutation.mutateAsync({ mailboxId, settings });
+			await Promise.all([
+				updateMailboxMutation.mutateAsync({ mailboxId, settings }),
+				updateTrustedImageSenders.mutateAsync(
+					Array.from(new Set(trustedImageSenders.map(normalizeEmailAddress).filter(Boolean))),
+				),
+			]);
 			toastManager.add({ title: "设置已保存！" });
 		} catch {
 			toastManager.add({ title: "保存设置失败", variant: "error" });
@@ -122,11 +146,12 @@ export default function SettingsRoute() {
 						</div>
 					</div>
 
-					{trustedImageSenders.length > 0 && (
-						<div className="rounded-xl border border-border bg-card p-5">
-							<div className="mb-3 text-sm font-medium text-foreground">
-								已信任图片发件人
-							</div>
+					{/* Trusted image senders */}
+					<div className="rounded-xl border border-border bg-card p-5">
+						<div className="mb-3 text-sm font-medium text-foreground">
+							已信任图片发件人
+						</div>
+						{trustedImageSenders.length > 0 ? (
 							<div className="space-y-2">
 								{trustedImageSenders.map((sender) => (
 									<div
@@ -148,8 +173,10 @@ export default function SettingsRoute() {
 									</div>
 								))}
 							</div>
-						</div>
-					)}
+						) : (
+							<div className="text-sm text-muted-foreground">暂无信任的发件人</div>
+						)}
+					</div>
 
 					{/* Agent system prompt */}
 					<div className="rounded-xl border border-border bg-card p-5">

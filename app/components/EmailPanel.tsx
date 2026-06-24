@@ -3,6 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useKumoToastManager } from "@cloudflare/kumo";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
 import { Folders } from "shared/folders";
@@ -15,7 +16,7 @@ import { normalizeEmailAddress, splitEmailList, toEmailListValue } from "~/lib/u
 import api from "~/services/api";
 import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useTranslateEmail, useUpdateEmail } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
-import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
+import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 import type { Email, EmailTranslation, Folder, Mailbox } from "~/types";
 
@@ -41,18 +42,27 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const translateEmailMut = useTranslateEmail();
 	const sendEmailMut = useSendEmail();
 	const replyMut = useReplyToEmail();
-	const updateMailboxMutation = useUpdateMailbox();
 	const { data: folders = [] } = useFolders(mailboxId) as { data?: Folder[] };
 	const { data: currentMailbox } = useMailbox(mailboxId) as {
 		data?: Mailbox;
 	};
+	const queryClient = useQueryClient();
+	const { data: trustedImageSenderData } = useQuery({
+		queryKey: ["trusted-image-senders"],
+		queryFn: () => api.getTrustedImageSenders(),
+	});
+	const updateTrustedImageSenders = useMutation({
+		mutationFn: (senders: string[]) => api.updateTrustedImageSenders(senders),
+		onSuccess: (data) => {
+			queryClient.setQueryData(["trusted-image-senders"], data);
+		},
+	});
 	const { closePanel, startCompose } = useUIStore();
 	const toastManager = useKumoToastManager();
 	const [isSending, setIsSending] = useState(false);
 	const [sourceViewEmail, setSourceViewEmail] = useState<Email | null>(null);
 	const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 	const [translations, setTranslations] = useState<Record<string, EmailTranslation>>({});
-	const [trustedSenderOverrides, setTrustedSenderOverrides] = useState<string[]>([]);
 	const [remoteImagesVisibleOnce, setRemoteImagesVisibleOnce] = useState<Set<string>>(new Set());
 	const [previewImage, setPreviewImage] = useState<{ url: string; filename: string } | null>(null);
 	const isDraftFolder = folder === Folders.DRAFT;
@@ -91,9 +101,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const moveToFolders = useMemo(() => { const cur = folder || email?.folder_id; return folders.filter((f) => f.id !== cur); }, [folders, folder, email?.folder_id]);
 
 	const trustedImageSenders = useMemo(() => {
-		const configured = currentMailbox?.settings?.trustedImageSenders ?? [];
-		return new Set([...configured, ...trustedSenderOverrides].map(normalizeEmailAddress).filter(Boolean));
-	}, [currentMailbox?.settings?.trustedImageSenders, trustedSenderOverrides]);
+		const configured = trustedImageSenderData?.senders ?? [];
+		return new Set(configured.map(normalizeEmailAddress).filter(Boolean));
+	}, [trustedImageSenderData?.senders]);
 
 	if (!email) return <EmailPanelSkeleton />;
 
@@ -115,26 +125,16 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	};
 
 	const handleTrustSender = async (sender: string) => {
-		if (!mailboxId || !currentMailbox) return;
 		const normalizedSender = normalizeEmailAddress(sender);
 		if (!normalizedSender) return;
 
-		const existing = currentMailbox.settings?.trustedImageSenders ?? [];
+		const existing = trustedImageSenderData?.senders ?? [];
 		const nextTrusted = Array.from(
 			new Set([...existing.map(normalizeEmailAddress), normalizedSender].filter(Boolean)),
 		);
 
 		try {
-			await updateMailboxMutation.mutateAsync({
-				mailboxId,
-				settings: {
-					...currentMailbox.settings,
-					trustedImageSenders: nextTrusted,
-				},
-			});
-			setTrustedSenderOverrides((prev) =>
-				prev.includes(normalizedSender) ? prev : [...prev, normalizedSender],
-			);
+			await updateTrustedImageSenders.mutateAsync(nextTrusted);
 			toastManager.add({ title: "已信任此发件人" });
 		} catch {
 			toastManager.add({ title: "保存信任发件人失败", variant: "error" });

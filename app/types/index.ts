@@ -16,7 +16,7 @@ export interface MailboxSettings {
 	agentSystemPrompt?: string;
 	/** When false, skip auto-drafting an AI reply on new inbound email. Defaults to enabled. */
 	autoDraftEnabled?: boolean;
-	/** Sender email addresses whose remote images may load automatically. */
+	/** @deprecated Trusted image senders are stored globally. Kept for legacy mailbox settings. */
 	trustedImageSenders?: string[];
 }
 
