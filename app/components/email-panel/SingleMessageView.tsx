@@ -5,7 +5,6 @@
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
 import RemoteImageNotice from "~/components/email-panel/RemoteImageNotice";
-import TranslationBlock from "~/components/email-panel/TranslationBlock";
 import { formatDetailDate, hasRemoteImages, rewriteInlineImages } from "~/lib/utils";
 import type { Email, EmailTranslation } from "~/types";
 
@@ -29,6 +28,7 @@ export default function SingleMessageView({
 	onPreviewImage,
 }: SingleMessageViewProps) {
 	const showRemoteImageNotice = hasRemoteImages(email.body) && !allowRemoteImages;
+	const body = translation?.bodyHtml || email.body || "";
 
 	return (
 		<div className="flex h-full flex-col">
@@ -64,18 +64,13 @@ export default function SingleMessageView({
 				<EmailIframe
 					allowRemoteImages={allowRemoteImages}
 					body={rewriteInlineImages(
-						email.body || "",
+						body,
 						mailboxId || "",
 						email.id,
 						email.attachments,
 					)}
 				/>
 			</div>
-
-			<TranslationBlock
-				translation={translation}
-				className="shrink-0 border-t border-border px-4 py-3 md:px-6"
-			/>
 
 			<EmailAttachmentList
 				mailboxId={mailboxId}

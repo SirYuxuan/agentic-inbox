@@ -13,7 +13,6 @@ import {
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
 import RemoteImageNotice from "~/components/email-panel/RemoteImageNotice";
-import TranslationBlock from "~/components/email-panel/TranslationBlock";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Tooltip } from "~/components/ui/tooltip";
@@ -90,6 +89,7 @@ export default function ThreadMessage({
 	);
 	const senderLabel = isDraft ? "草稿回复" : isSelf ? "我" : email.sender;
 	const showRemoteImageNotice = hasRemoteImages(email.body) && !allowRemoteImages;
+	const body = translation?.bodyHtml || email.body || "";
 
 	if (!isExpanded) {
 		return (
@@ -184,15 +184,10 @@ export default function ThreadMessage({
 				<div className="md:ml-[42px]">
 					<EmailIframe
 						allowRemoteImages={allowRemoteImages}
-						body={rewriteInlineImages(email.body || "", mailboxId || "", email.id, email.attachments)}
+						body={rewriteInlineImages(body, mailboxId || "", email.id, email.attachments)}
 						autoSize
 					/>
 				</div>
-
-				<TranslationBlock
-					translation={translation}
-					className="mt-3 md:ml-[42px]"
-				/>
 
 				{isDraft && (onSendDraft || onEditDraft || onDeleteDraft) && (
 					<div className="mt-3 flex gap-2 md:ml-[42px]">

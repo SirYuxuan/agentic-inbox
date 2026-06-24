@@ -64,6 +64,7 @@ export interface Email {
 export interface EmailTranslation {
 	subject: string;
 	body: string;
+	bodyHtml: string;
 }
 
 export interface Attachment {

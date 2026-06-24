@@ -199,6 +199,7 @@ function normalizeWhitespace(s: string): string {
 interface TranslationResult {
 	subject: string;
 	body: string;
+	bodyHtml: string;
 }
 
 async function translateText(
@@ -263,20 +264,69 @@ async function translateLongText(ai: Ai, text: string): Promise<string> {
 	return translated.join("\n\n").trim();
 }
 
+function splitTextWhitespace(text: string) {
+	const leading = text.match(/^\s*/)?.[0] ?? "";
+	const trailing = text.match(/\s*$/)?.[0] ?? "";
+	const core = text.slice(leading.length, text.length - trailing.length);
+	return { leading, core, trailing };
+}
+
+async function translateHtmlPreservingMarkup(ai: Ai, html: string): Promise<string> {
+	if (!html.trim()) return "";
+
+	const tokens = html.split(/(<[^>]+>)/g);
+	const translated: string[] = [];
+	let skippedTag: "script" | "style" | null = null;
+
+	for (const token of tokens) {
+		if (!token) continue;
+
+		if (token.startsWith("<")) {
+			const lower = token.toLowerCase();
+			if (/^<script\b/.test(lower)) skippedTag = "script";
+			else if (/^<style\b/.test(lower)) skippedTag = "style";
+			else if (/^<\/script\b/.test(lower) && skippedTag === "script") skippedTag = null;
+			else if (/^<\/style\b/.test(lower) && skippedTag === "style") skippedTag = null;
+
+			translated.push(token);
+			continue;
+		}
+
+		if (skippedTag || !/\S/.test(token)) {
+			translated.push(token);
+			continue;
+		}
+
+		const { leading, core, trailing } = splitTextWhitespace(token);
+		if (!core) {
+			translated.push(token);
+			continue;
+		}
+
+		const translatedCore = await translateText(ai, core);
+		translated.push(`${leading}${escapeHtml(translatedCore || core)}${trailing}`);
+	}
+
+	return translated.join("");
+}
+
 export async function translateEmailContent(
 	ai: Ai,
 	email: { subject?: string | null; body?: string | null },
 ): Promise<TranslationResult> {
 	const subject = email.subject || "";
 	const bodyText = email.body ? stripHtmlToText(email.body) : "";
+	const bodyHtml = email.body || "";
 
-	const [translatedSubject, translatedBody] = await Promise.all([
+	const [translatedSubject, translatedBody, translatedBodyHtml] = await Promise.all([
 		translateText(ai, subject),
 		translateLongText(ai, bodyText),
+		translateHtmlPreservingMarkup(ai, bodyHtml),
 	]);
 
 	return {
 		subject: translatedSubject || subject,
 		body: translatedBody || bodyText,
+		bodyHtml: translatedBodyHtml || bodyHtml,
 	};
 }
