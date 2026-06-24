@@ -101,6 +101,12 @@ const api = {
 
 	// Mailboxes
 	listMailboxes: () => get<Mailbox[]>("/api/v1/mailboxes"),
+	getMailboxUnreadCounts: () =>
+		get<Record<string, number>>("/api/v1/mailboxes/unread-counts"),
+	getMailboxOrder: () =>
+		get<{ order: string[] }>("/api/v1/mailboxes/order"),
+	updateMailboxOrder: (order: string[]) =>
+		put<{ order: string[] }>("/api/v1/mailboxes/order", { order }),
 	createMailbox: (email: string, name: string, settings?: unknown) =>
 		post<Mailbox>("/api/v1/mailboxes", { email, name, settings }),
 	getMailbox: (mailboxId: string) =>

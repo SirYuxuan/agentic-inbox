@@ -12,13 +12,14 @@ import {
 	Inbox,
 	Loader2,
 	Mail,
+	MailOpen,
 	Network,
 	Plus,
 	Route,
 	ShieldCheck,
 	Trash2,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import { Badge } from "~/components/ui/badge";
@@ -40,7 +41,6 @@ import {
 	getMailboxOrderKey,
 	readMailboxOrder,
 	sortMailboxesByOrder,
-	writeMailboxOrder,
 	type MailboxListItem,
 } from "~/lib/mailbox-order";
 import {
@@ -85,11 +85,27 @@ export default function HomeRoute() {
 	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched } = useMailboxes();
 	const createMailbox = useCreateMailbox();
 	const deleteMailbox = useDeleteMailbox();
+	const queryClient = useQueryClient();
 
 	const { data: configData } = useQuery({
 		queryKey: queryKeys.config,
 		queryFn: () => api.getConfig(),
 		staleTime: Infinity, // config rarely changes
+	});
+	const { data: unreadCounts = {} } = useQuery({
+		queryKey: ["mailboxes", "unread-counts"],
+		queryFn: () => api.getMailboxUnreadCounts(),
+		refetchInterval: 30_000,
+	});
+	const { data: mailboxOrderData } = useQuery({
+		queryKey: ["mailboxes", "order"],
+		queryFn: () => api.getMailboxOrder(),
+	});
+	const updateMailboxOrder = useMutation({
+		mutationFn: (order: string[]) => api.updateMailboxOrder(order),
+		onSuccess: (data) => {
+			queryClient.setQueryData(["mailboxes", "order"], data);
+		},
 	});
 
 	const domains = configData?.domains ?? [];
@@ -112,9 +128,22 @@ export default function HomeRoute() {
 	const [draggedEmail, setDraggedEmail] = useState<string | null>(null);
 	const [dragOverEmail, setDragOverEmail] = useState<string | null>(null);
 
+	const localOrderMigratedRef = useRef(false);
 	useEffect(() => {
-		setMailboxOrder(readMailboxOrder());
-	}, []);
+		if (!mailboxOrderData) return;
+		const serverOrder = mailboxOrderData.order;
+		if (serverOrder.length > 0) {
+			setMailboxOrder(serverOrder);
+			return;
+		}
+
+		const localOrder = readMailboxOrder();
+		setMailboxOrder(localOrder);
+		if (localOrder.length > 0 && !localOrderMigratedRef.current) {
+			localOrderMigratedRef.current = true;
+			updateMailboxOrder.mutate(localOrder);
+		}
+	}, [mailboxOrderData]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	// Set default domain when config loads
 	useEffect(() => {
@@ -246,11 +275,20 @@ export default function HomeRoute() {
 		const [moved] = nextOrder.splice(sourceIndex, 1);
 		nextOrder.splice(targetIndex, 0, moved);
 		setMailboxOrder(nextOrder);
-		writeMailboxOrder(nextOrder);
+		updateMailboxOrder.mutate(nextOrder, {
+			onError: () => {
+				setMailboxOrder(currentOrder);
+				toastManager.add({ title: "保存邮箱排序失败", variant: "error" });
+			},
+		});
 	};
 
 	const isLoading = !configData;
 	const mailboxCount = orderedAccounts.length;
+	const totalUnreadCount = orderedAccounts.reduce(
+		(sum, account) => sum + (unreadCounts[account.id] ?? unreadCounts[account.email] ?? 0),
+		0,
+	);
 	const configuredCount = emailAddresses.length;
 	const routeMode = isConfigured ? "固定路由" : "手动管理";
 	const primaryDomain = domains[0] || "未配置";
@@ -307,6 +345,12 @@ export default function HomeRoute() {
 						</div>
 						<div className="h-4 w-px bg-border" />
 						<div className="flex items-center gap-2 px-3">
+							<MailOpen className="h-4 w-4 text-muted-foreground" />
+							<span className="font-medium">{totalUnreadCount}</span>
+							<span className="text-muted-foreground">未读</span>
+						</div>
+						<div className="h-4 w-px bg-border" />
+						<div className="flex items-center gap-2 px-3">
 							<AtSign className="h-4 w-4 text-muted-foreground" />
 							<span className="font-medium">{domains.length || 0}</span>
 							<span className="text-muted-foreground">域名</span>
@@ -331,6 +375,7 @@ export default function HomeRoute() {
 								{visibleAccounts.map((account, idx) => {
 									const orderKey = getMailboxOrderKey(account);
 									const domain = account.email.split("@")[1] || primaryDomain;
+									const unreadCount = unreadCounts[account.id] ?? unreadCounts[account.email] ?? 0;
 									return (
 										<RouterLink
 											key={account.id}
@@ -373,8 +418,15 @@ export default function HomeRoute() {
 													{account.name.charAt(0).toUpperCase()}
 												</div>
 												<div className="min-w-0">
-													<div className="truncate text-sm font-medium">
-														{account.name}
+													<div className="flex min-w-0 items-center gap-2">
+														<div className="truncate text-sm font-medium">
+															{account.name}
+														</div>
+														{unreadCount > 0 && (
+															<Badge variant="secondary" className="h-5 min-w-5 shrink-0 justify-center rounded-full px-1.5">
+																{unreadCount}
+															</Badge>
+														)}
 													</div>
 													<div className="truncate text-xs text-muted-foreground">
 														{account.email}
@@ -446,6 +498,10 @@ export default function HomeRoute() {
 									<div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
 										<span className="text-muted-foreground">邮箱</span>
 										<span className="font-medium">{mailboxCount}</span>
+									</div>
+									<div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
+										<span className="text-muted-foreground">未读邮件</span>
+										<span className="font-medium">{totalUnreadCount}</span>
 									</div>
 									<div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
 										<span className="text-muted-foreground">域名</span>

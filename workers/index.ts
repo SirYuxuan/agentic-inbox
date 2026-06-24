@@ -32,6 +32,10 @@ const CreateMailboxBody = z.object({
 	settings: z.record(z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
 });
 
+const MailboxOrderBody = z.object({
+	order: z.array(z.string().email()),
+});
+
 const DraftBody = z.object({
 	to: z.string().optional(),
 	cc: z.string().optional(),
@@ -98,6 +102,7 @@ app.get("/api/v1/config", (c) => {
 // usage means a read-modify-write of the whole file is fine.
 
 const CONTACTS_KEY = "contacts.json";
+const MAILBOX_ORDER_KEY = "settings/mailbox-order.json";
 
 const ContactBody = z.object({
 	name: z.string().trim().min(1),
@@ -179,6 +184,42 @@ app.delete("/api/v1/contacts/:id", async (c) => {
 app.get("/api/v1/mailboxes", async (c) => {
 	const allMailboxes = await listMailboxes(c.env.BUCKET);
 	return c.json(allMailboxes);
+});
+
+app.get("/api/v1/mailboxes/unread-counts", async (c) => {
+	const allMailboxes = await listMailboxes(c.env.BUCKET);
+	const entries = await Promise.all(
+		allMailboxes.map(async (mailbox) => {
+			const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(mailbox.id));
+			const folders = await stub.getFolders();
+			const inbox = folders.find((folder) => folder.id === Folders.INBOX);
+			return [mailbox.id, inbox?.unreadCount ?? 0] as const;
+		}),
+	);
+	return c.json(Object.fromEntries(entries));
+});
+
+app.get("/api/v1/mailboxes/order", async (c) => {
+	const obj = await c.env.BUCKET.get(MAILBOX_ORDER_KEY);
+	if (!obj) return c.json({ order: [] });
+	try {
+		const parsed = await obj.json<{ order?: unknown }>();
+		const order = Array.isArray(parsed.order)
+			? parsed.order.filter((item): item is string => typeof item === "string")
+			: [];
+		return c.json({ order });
+	} catch {
+		return c.json({ order: [] });
+	}
+});
+
+app.put("/api/v1/mailboxes/order", async (c) => {
+	const parsed = MailboxOrderBody.safeParse(await c.req.json());
+	if (!parsed.success) return c.json({ error: "Invalid mailbox order" }, 400);
+
+	const order = parsed.data.order.map((email) => email.toLowerCase());
+	await c.env.BUCKET.put(MAILBOX_ORDER_KEY, JSON.stringify({ order }));
+	return c.json({ order });
 });
 
 app.post("/api/v1/mailboxes", async (c) => {

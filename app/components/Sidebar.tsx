@@ -15,6 +15,7 @@ import {
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
@@ -38,6 +39,7 @@ import {
 import { cn } from "~/lib/utils";
 import { useCreateFolder, useFolders } from "~/queries/folders";
 import { useMailbox, useMailboxes } from "~/queries/mailboxes";
+import api from "~/services/api";
 import { useUIStore } from "~/hooks/useUIStore";
 
 const FOLDER_ICONS: Record<string, React.ReactNode> = {
@@ -98,6 +100,10 @@ export default function Sidebar() {
 	const { startCompose, closeSidebar } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
 	const { data: mailboxes = [] } = useMailboxes();
+	const { data: mailboxOrderData } = useQuery({
+		queryKey: ["mailboxes", "order"],
+		queryFn: () => api.getMailboxOrder(),
+	});
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
 	const [isMailboxSwitcherOpen, setIsMailboxSwitcherOpen] = useState(false);
@@ -105,8 +111,13 @@ export default function Sidebar() {
 	const switcherRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		setMailboxOrder(readMailboxOrder());
-	}, []);
+		if (!mailboxOrderData) return;
+		setMailboxOrder(
+			mailboxOrderData.order.length > 0
+				? mailboxOrderData.order
+				: readMailboxOrder(),
+		);
+	}, [mailboxOrderData]);
 
 	useEffect(() => {
 		if (!isMailboxSwitcherOpen) return;
