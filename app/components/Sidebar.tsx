@@ -4,6 +4,7 @@
 
 import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
 import {
+	AddressBookIcon,
 	ArchiveIcon,
 	CaretLeftIcon,
 	FileIcon,
@@ -169,6 +170,15 @@ export default function Sidebar() {
 						onClick={handleNavClick}
 					/>
 				))}
+
+				<div className="pt-2 mt-2 border-t border-kumo-line">
+					<FolderLink
+						to={`/mailbox/${mailboxId}/contacts`}
+						icon={<AddressBookIcon size={18} weight="regular" />}
+						label="通讯录"
+						onClick={handleNavClick}
+					/>
+				</div>
 
 				{/* Custom folders */}
 				{customFolders.length > 0 && (

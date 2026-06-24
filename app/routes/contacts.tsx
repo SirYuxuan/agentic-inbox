@@ -12,13 +12,11 @@ import {
 } from "@cloudflare/kumo";
 import {
 	AddressBookIcon,
-	CaretLeftIcon,
 	PencilSimpleIcon,
 	PlusIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
-import { Link as RouterLink } from "react-router";
 import {
 	useContacts,
 	useCreateContact,
@@ -103,18 +101,11 @@ export default function ContactsRoute() {
 	};
 
 	return (
-		<div className="min-h-screen bg-kumo-recessed">
-			<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
-				<div className="mb-8">
-					<RouterLink
-						to="/"
-						className="flex items-center gap-1.5 text-kumo-subtle text-sm hover:text-kumo-default transition-colors mb-2.5 no-underline w-fit"
-					>
-						<CaretLeftIcon size={14} />
-						<span>邮箱列表</span>
-					</RouterLink>
+		<div className="h-full overflow-y-auto">
+			<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6">
+				<div className="mb-6">
 					<div className="flex items-center justify-between">
-						<h1 className="text-2xl font-bold text-kumo-default">通讯录</h1>
+						<h1 className="text-lg font-semibold text-kumo-default">通讯录</h1>
 						<Button
 							variant="primary"
 							icon={<PlusIcon size={16} />}
