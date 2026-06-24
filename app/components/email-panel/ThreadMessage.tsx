@@ -2,7 +2,6 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Badge, Button, Tooltip } from "@cloudflare/kumo";
 import {
 	CaretDownIcon,
 	CaretUpIcon,
@@ -13,6 +12,10 @@ import {
 } from "@phosphor-icons/react";
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { Tooltip } from "~/components/ui/tooltip";
+import { cn } from "~/lib/utils";
 import {
 	formatDetailDate,
 	formatShortDate,
@@ -40,13 +43,14 @@ interface ThreadMessageProps {
 function Avatar({ isDraft, isSelf, sender }: { isDraft?: boolean; isSelf: boolean; sender: string }) {
 	return (
 		<div
-			className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+			className={cn(
+				"flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
 				isDraft
-					? "bg-kumo-fill text-kumo-subtle"
+					? "bg-muted text-muted-foreground"
 					: isSelf
-						? "bg-kumo-brand text-kumo-inverse"
-						: "bg-kumo-fill text-kumo-default"
-			}`}
+						? "bg-foreground text-background"
+						: "bg-muted text-foreground",
+			)}
 		>
 			{isDraft ? "D" : sender.charAt(0).toUpperCase()}
 		</div>
@@ -69,7 +73,10 @@ export default function ThreadMessage({
 	onPreviewImage,
 }: ThreadMessageProps) {
 	const isSelf = email.sender === mailboxEmail;
-	const containerClassName = `${!isLast ? "border-b border-kumo-line" : ""} ${isDraft ? "border-l-2 border-l-kumo-warning bg-kumo-warning/[0.02]" : ""}`;
+	const containerClassName = cn(
+		!isLast && "border-b border-border",
+		isDraft && "border-l-2 border-l-amber-500 bg-amber-500/[0.03]",
+	);
 	const senderLabel = isDraft ? "草稿回复" : isSelf ? "我" : email.sender;
 
 	if (!isExpanded) {
@@ -78,68 +85,68 @@ export default function ThreadMessage({
 				<button
 					type="button"
 					onClick={onToggleExpand}
-					className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kumo-tint rounded-lg text-left"
+					className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-accent/50"
 				>
 					<Avatar isDraft={isDraft} isSelf={isSelf} sender={email.sender} />
-					<div className="flex-1 min-w-0">
+					<div className="min-w-0 flex-1">
 						<div className="flex items-center justify-between">
-							<span className="text-sm font-medium text-kumo-default truncate">
+							<span className="truncate text-sm font-medium text-foreground">
 								{senderLabel}
 							</span>
-							<span className="text-xs text-kumo-subtle shrink-0">
+							<span className="shrink-0 text-xs text-muted-foreground">
 								{formatDetailDate(email.date)}
 							</span>
 						</div>
-						<p className="text-xs text-kumo-subtle truncate">
+						<p className="truncate text-xs text-muted-foreground">
 							{stripHtml(email.body || "").slice(0, 80)}
 						</p>
 					</div>
-					<CaretDownIcon size={14} className="text-kumo-subtle shrink-0" />
+					<CaretDownIcon size={14} className="shrink-0 text-muted-foreground" />
 				</button>
 			</div>
 		);
 	}
 
 	return (
-		<div className={`group/thread-msg ${containerClassName}`}>
+		<div className={cn("group/thread-msg", containerClassName)}>
 			<div className="px-4 py-4 md:px-6">
-				<div className="flex items-center justify-between gap-3 mb-3">
-					<div className="flex items-center gap-2.5 min-w-0">
+				<div className="mb-3 flex items-center justify-between gap-3">
+					<div className="flex min-w-0 items-center gap-2.5">
 						<button
 							type="button"
 							onClick={onToggleExpand}
 							className="shrink-0"
 							aria-label="收起邮件"
 						>
-							<div className="cursor-pointer hover:ring-2 hover:ring-kumo-brand/30 transition-shadow rounded-full">
+							<div className="rounded-full transition-shadow hover:ring-2 hover:ring-ring/30">
 								<Avatar isDraft={isDraft} isSelf={isSelf} sender={email.sender} />
 							</div>
 						</button>
 						<div className="min-w-0">
 							<div className="flex items-center gap-2">
-								<span className="text-sm font-medium text-kumo-default truncate">
+								<span className="truncate text-sm font-medium text-foreground">
 									{senderLabel}
 								</span>
 								{isDraft && <Badge variant="outline">草稿</Badge>}
 							</div>
-							<div className="text-xs text-kumo-subtle">收件人：{email.recipient}</div>
+							<div className="text-xs text-muted-foreground">收件人：{email.recipient}</div>
 						</div>
 					</div>
-					<div className="flex items-center gap-1 shrink-0">
-						<span className="text-xs text-kumo-subtle">
+					<div className="flex shrink-0 items-center gap-1">
+						<span className="text-xs text-muted-foreground">
 							{formatShortDate(email.date)}
 						</span>
 						{onViewSource && (
-							<Tooltip content="查看源码" side="bottom" asChild>
+							<Tooltip content="查看源码">
 								<Button
 									variant="ghost"
-									shape="square"
-									size="sm"
-									icon={<CodeIcon size={14} />}
+									size="icon-sm"
 									onClick={onViewSource}
 									aria-label="查看源码"
-									className="transition-opacity !h-6 !w-6"
-								/>
+									className="h-6 w-6 text-muted-foreground"
+								>
+									<CodeIcon size={14} />
+								</Button>
 							</Tooltip>
 						)}
 						<button
@@ -148,59 +155,35 @@ export default function ThreadMessage({
 							className="ml-1"
 							aria-label="收起邮件"
 						>
-							<CaretUpIcon
-								size={14}
-								className="text-kumo-subtle hover:text-kumo-default transition-colors"
-							/>
+							<CaretUpIcon size={14} className="text-muted-foreground transition-colors hover:text-foreground" />
 						</button>
 					</div>
 				</div>
 
 				<div className="md:ml-[42px]">
 					<EmailIframe
-						body={rewriteInlineImages(
-							email.body || "",
-							mailboxId || "",
-							email.id,
-							email.attachments,
-						)}
+						body={rewriteInlineImages(email.body || "", mailboxId || "", email.id, email.attachments)}
 						autoSize
 					/>
 				</div>
 
 				{isDraft && (onSendDraft || onEditDraft || onDeleteDraft) && (
-					<div className="flex gap-2 mt-3 md:ml-[42px]">
+					<div className="mt-3 flex gap-2 md:ml-[42px]">
 						{onSendDraft && (
-							<Button
-								variant="primary"
-								size="sm"
-								icon={<PaperPlaneTiltIcon size={14} />}
-								onClick={onSendDraft}
-								loading={isSending}
-								disabled={isSending}
-							>
+							<Button size="sm" onClick={onSendDraft} disabled={isSending}>
+								<PaperPlaneTiltIcon size={14} />
 								{isSending ? "发送中……" : "发送"}
 							</Button>
 						)}
 						{onEditDraft && (
-							<Button
-								variant="secondary"
-								size="sm"
-								icon={<PencilSimpleIcon size={14} />}
-								onClick={onEditDraft}
-								disabled={isSending}
-							>
+							<Button variant="outline" size="sm" onClick={onEditDraft} disabled={isSending}>
+								<PencilSimpleIcon size={14} />
 								编辑
 							</Button>
 						)}
 						{onDeleteDraft && (
-							<Button
-								variant="ghost"
-								size="sm"
-								icon={<TrashIcon size={14} />}
-								onClick={onDeleteDraft}
-								disabled={isSending}
-							>
+							<Button variant="ghost" size="sm" onClick={onDeleteDraft} disabled={isSending}>
+								<TrashIcon size={14} />
 								丢弃
 							</Button>
 						)}

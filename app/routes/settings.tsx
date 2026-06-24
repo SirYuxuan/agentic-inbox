@@ -2,10 +2,16 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Badge, Button, Input, Loader, Switch, useKumoToastManager } from "@cloudflare/kumo";
-import { RobotIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
+import { useKumoToastManager } from "@cloudflare/kumo";
+import { ArrowCounterClockwiseIcon, RobotIcon } from "@phosphor-icons/react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import { Switch } from "~/components/ui/switch";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 
 // Placeholder shown in the textarea when no custom prompt is set.
@@ -27,7 +33,6 @@ export default function SettingsRoute() {
 		if (mailbox) {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
-			// Absent => enabled by default.
 			setAutoDraft(mailbox.settings?.autoDraftEnabled !== false);
 		}
 	}, [mailbox]);
@@ -45,23 +50,18 @@ export default function SettingsRoute() {
 			await updateMailboxMutation.mutateAsync({ mailboxId, settings });
 			toastManager.add({ title: "设置已保存！" });
 		} catch {
-			toastManager.add({
-				title: "保存设置失败",
-				variant: "error",
-			});
+			toastManager.add({ title: "保存设置失败", variant: "error" });
 		} finally {
 			setIsSaving(false);
 		}
 	};
 
-	const handleResetPrompt = () => {
-		setAgentPrompt("");
-	};
+	const handleResetPrompt = () => setAgentPrompt("");
 
 	if (!mailbox) {
 		return (
 			<div className="flex justify-center py-20">
-				<Loader size="lg" />
+				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 			</div>
 		);
 	}
@@ -69,89 +69,88 @@ export default function SettingsRoute() {
 	const isCustomPrompt = agentPrompt.trim().length > 0;
 
 	return (
-		<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6 h-full overflow-y-auto">
-			<h1 className="text-lg font-semibold text-kumo-default mb-6">设置</h1>
+		<div className="h-full overflow-y-auto">
+			<div className="max-w-2xl px-4 py-5 md:px-8 md:py-6">
+				<h1 className="mb-6 text-lg font-semibold text-foreground">设置</h1>
 
-			<div className="space-y-6">
-				{/* Account */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="text-sm font-medium text-kumo-default mb-4">
-						账户
-					</div>
-					<div className="space-y-3">
-						<Input
-							label="显示名称"
-							value={displayName}
-							onChange={(e) => setDisplayName(e.target.value)}
-						/>
-						<Input label="邮箱" type="email" value={mailbox.email} disabled />
-					</div>
-				</div>
-
-				{/* Auto-draft */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="flex items-center justify-between gap-4">
-						<div className="min-w-0">
-							<div className="text-sm font-medium text-kumo-default">
-								新邮件自动起草回复
+				<div className="space-y-5">
+					{/* Account */}
+					<div className="rounded-xl border border-border bg-card p-5">
+						<div className="mb-4 text-sm font-medium text-foreground">账户</div>
+						<div className="space-y-3">
+							<div className="space-y-1.5">
+								<Label>显示名称</Label>
+								<Input
+									value={displayName}
+									onChange={(e) => setDisplayName(e.target.value)}
+								/>
 							</div>
-							<p className="text-xs text-kumo-subtle mt-1">
-								收到新邮件时，让 AI 助手自动起草一封回复草稿（不会自动发送）。关闭后仍可正常收信，并随时手动让助手起草。
-							</p>
+							<div className="space-y-1.5">
+								<Label>邮箱</Label>
+								<Input type="email" value={mailbox.email} disabled />
+							</div>
 						</div>
-						<Switch
-							checked={autoDraft}
-							onCheckedChange={setAutoDraft}
-							aria-label="新邮件自动起草回复"
-						/>
 					</div>
-				</div>
 
-				{/* Agent System Prompt */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="flex items-center justify-between mb-4">
-						<div className="flex items-center gap-2">
-							<RobotIcon size={16} weight="duotone" className="text-kumo-subtle" />
-							<span className="text-sm font-medium text-kumo-default">
-								AI 助手提示词
-							</span>
-							{isCustomPrompt ? (
-								<Badge variant="primary">自定义</Badge>
-							) : (
-								<Badge variant="secondary">默认</Badge>
+					{/* Auto-draft */}
+					<div className="rounded-xl border border-border bg-card p-5">
+						<div className="flex items-center justify-between gap-4">
+							<div className="min-w-0">
+								<div className="text-sm font-medium text-foreground">
+									新邮件自动起草回复
+								</div>
+								<p className="mt-1 text-xs text-muted-foreground">
+									收到新邮件时，让 AI 助手自动起草一封回复草稿（不会自动发送）。关闭后仍可正常收信，并随时手动让助手起草。
+								</p>
+							</div>
+							<Switch
+								checked={autoDraft}
+								onCheckedChange={setAutoDraft}
+								aria-label="新邮件自动起草回复"
+							/>
+						</div>
+					</div>
+
+					{/* Agent system prompt */}
+					<div className="rounded-xl border border-border bg-card p-5">
+						<div className="mb-4 flex items-center justify-between">
+							<div className="flex items-center gap-2">
+								<RobotIcon size={16} weight="duotone" className="text-muted-foreground" />
+								<span className="text-sm font-medium text-foreground">AI 助手提示词</span>
+								{isCustomPrompt ? (
+									<Badge variant="default">自定义</Badge>
+								) : (
+									<Badge variant="secondary">默认</Badge>
+								)}
+							</div>
+							{isCustomPrompt && (
+								<Button variant="ghost" size="sm" onClick={handleResetPrompt}>
+									<ArrowCounterClockwiseIcon size={14} />
+									恢复默认
+								</Button>
 							)}
 						</div>
-						{isCustomPrompt && (
-							<Button
-								variant="ghost"
-								size="xs"
-								icon={<ArrowCounterClockwiseIcon size={14} />}
-								onClick={handleResetPrompt}
-							>
-								恢复默认
-							</Button>
-						)}
+						<p className="mb-3 text-xs text-muted-foreground">
+							自定义 AI 助手在此邮箱中的行为方式。留空则使用内置的默认提示词。
+						</p>
+						<textarea
+							value={agentPrompt}
+							onChange={(e) => setAgentPrompt(e.target.value)}
+							placeholder={PROMPT_PLACEHOLDER}
+							rows={12}
+							className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-xs leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						/>
+						<p className="mt-2 text-xs text-muted-foreground">
+							该提示词会作为系统消息发送给 AI 模型，用于控制助手的人设、写作风格和行为规则。
+						</p>
 					</div>
-					<p className="text-xs text-kumo-subtle mb-3">
-						自定义 AI 助手在此邮箱中的行为方式。留空则使用内置的默认提示词。
-					</p>
-					<textarea
-						value={agentPrompt}
-						onChange={(e) => setAgentPrompt(e.target.value)}
-						placeholder={PROMPT_PLACEHOLDER}
-						rows={12}
-						className="w-full resize-y rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2 text-xs text-kumo-default placeholder:text-kumo-subtle focus:outline-none focus:ring-1 focus:ring-kumo-ring font-mono leading-relaxed"
-					/>
-					<p className="text-xs text-kumo-subtle mt-2">
-						该提示词会作为系统消息发送给 AI 模型，用于控制助手的人设、写作风格和行为规则。
-					</p>
-				</div>
 
-				{/* Save */}
-				<div className="flex justify-end">
-					<Button variant="primary" onClick={handleSave} loading={isSaving}>
-						保存更改
-					</Button>
+					<div className="flex justify-end">
+						<Button onClick={handleSave} disabled={isSaving}>
+							{isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+							保存更改
+						</Button>
+					</div>
 				</div>
 			</div>
 		</div>

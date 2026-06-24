@@ -2,8 +2,9 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Input } from "@cloudflare/kumo";
 import { useMemo, useRef, useState } from "react";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import { useContacts } from "~/queries/contacts";
 import type { Contact } from "~/types";
 
@@ -12,7 +13,6 @@ interface RecipientInputProps {
 	onChange: (value: string) => void;
 	label?: string;
 	placeholder?: string;
-	size?: "sm" | "base";
 	required?: boolean;
 	"aria-label"?: string;
 }
@@ -31,7 +31,6 @@ export default function RecipientInput({
 	onChange,
 	label,
 	placeholder,
-	size = "sm",
 	required,
 	"aria-label": ariaLabel,
 }: RecipientInputProps) {
@@ -40,7 +39,6 @@ export default function RecipientInput({
 	const [activeIndex, setActiveIndex] = useState(0);
 	const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	// Current token = text after the last comma.
 	const lastComma = value.lastIndexOf(",");
 	const token = value.slice(lastComma + 1).trim().toLowerCase();
 
@@ -68,7 +66,7 @@ export default function RecipientInput({
 	const showDropdown = open && suggestions.length > 0;
 
 	const select = (contact: Contact) => {
-		const head = value.slice(0, lastComma + 1); // "" or "a@x.com,"
+		const head = value.slice(0, lastComma + 1);
 		const next = (head ? `${head} ` : "") + contact.email + ", ";
 		onChange(next);
 		setOpen(false);
@@ -84,7 +82,6 @@ export default function RecipientInput({
 			e.preventDefault();
 			setActiveIndex((i) => (i - 1 + suggestions.length) % suggestions.length);
 		} else if (e.key === "Enter") {
-			// Pick the highlighted contact instead of submitting the form.
 			e.preventDefault();
 			select(suggestions[activeIndex] ?? suggestions[0]);
 		} else if (e.key === "Escape") {
@@ -93,12 +90,11 @@ export default function RecipientInput({
 	};
 
 	return (
-		<div className="relative w-full">
+		<div className="relative w-full space-y-1.5">
+			{label && <Label>{label}</Label>}
 			<Input
-				label={label}
 				type="text"
 				placeholder={placeholder}
-				size={size}
 				value={value}
 				required={required}
 				aria-label={ariaLabel}
@@ -110,29 +106,29 @@ export default function RecipientInput({
 				onFocus={() => setOpen(true)}
 				onKeyDown={handleKeyDown}
 				onBlur={() => {
-					// Delay so a click on a suggestion registers first.
 					blurTimer.current = setTimeout(() => setOpen(false), 120);
 				}}
 			/>
 			{showDropdown && (
-				<div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg py-1 max-h-60 overflow-y-auto">
+				<div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
 					{suggestions.map((contact, idx) => (
 						<button
 							key={contact.id}
 							type="button"
 							onMouseDown={(e) => {
-								// Prevent input blur from firing before the click.
 								e.preventDefault();
 								if (blurTimer.current) clearTimeout(blurTimer.current);
 								select(contact);
 							}}
 							onMouseEnter={() => setActiveIndex(idx)}
-							className={`w-full text-left px-3 py-1.5 transition-colors ${
-								idx === activeIndex ? "bg-kumo-tint" : "hover:bg-kumo-overlay"
+							className={`w-full px-3 py-1.5 text-left transition-colors ${
+								idx === activeIndex ? "bg-accent" : "hover:bg-accent/60"
 							}`}
 						>
-							<div className="text-sm text-kumo-default truncate">{contact.name}</div>
-							<div className="text-xs text-kumo-subtle truncate">{contact.email}</div>
+							<div className="truncate text-sm text-foreground">{contact.name}</div>
+							<div className="truncate text-xs text-muted-foreground">
+								{contact.email}
+							</div>
 						</button>
 					))}
 				</div>

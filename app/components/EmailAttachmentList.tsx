@@ -31,9 +31,9 @@ export default function EmailAttachmentList({
 	return (
 		<div className={className}>
 			{showHeading && (
-				<div className="flex items-center gap-2 mb-2">
-					<PaperclipIcon size={14} className="text-kumo-subtle" />
-					<span className="text-sm font-medium text-kumo-default">
+				<div className="mb-2 flex items-center gap-2">
+					<PaperclipIcon size={14} className="text-muted-foreground" />
+					<span className="text-sm font-medium text-foreground">
 						{files.length} 个附件
 					</span>
 				</div>
@@ -49,13 +49,13 @@ export default function EmailAttachmentList({
 								key={attachment.id}
 								type="button"
 								onClick={() => onPreviewImage(url, attachment.filename)}
-								className="flex items-center gap-2 rounded-md border border-kumo-line px-3 py-2 transition-colors hover:bg-kumo-tint text-sm text-left"
+								className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
 							>
-								<ImageIcon size={16} className="text-kumo-subtle shrink-0" />
-								<span className="text-kumo-default font-medium truncate max-w-[140px]">
+								<ImageIcon size={16} className="shrink-0 text-muted-foreground" />
+								<span className="max-w-[140px] truncate font-medium text-foreground">
 									{attachment.filename}
 								</span>
-								<span className="text-kumo-subtle">{formatBytes(attachment.size)}</span>
+								<span className="text-muted-foreground">{formatBytes(attachment.size)}</span>
 							</button>
 						);
 					}
@@ -66,13 +66,13 @@ export default function EmailAttachmentList({
 							href={url}
 							target="_blank"
 							rel="noopener noreferrer"
-							className="flex items-center gap-2 rounded-md border border-kumo-line px-3 py-2 no-underline transition-colors hover:bg-kumo-tint text-sm"
+							className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm no-underline transition-colors hover:bg-accent"
 						>
-							<FileIcon size={16} className="text-kumo-subtle shrink-0" />
-							<span className="text-kumo-default font-medium truncate max-w-[140px]">
+							<FileIcon size={16} className="shrink-0 text-muted-foreground" />
+							<span className="max-w-[140px] truncate font-medium text-foreground">
 								{attachment.filename}
 							</span>
-							<span className="text-kumo-subtle">{formatBytes(attachment.size)}</span>
+							<span className="text-muted-foreground">{formatBytes(attachment.size)}</span>
 						</a>
 					);
 				})}

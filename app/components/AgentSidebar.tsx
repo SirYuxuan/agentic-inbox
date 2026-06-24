@@ -2,8 +2,8 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Loader } from "@cloudflare/kumo";
 import { PlugsIcon, RobotIcon } from "@phosphor-icons/react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import MCPPanel from "./MCPPanel";
 
@@ -25,15 +25,15 @@ function LazyAgentPanel() {
 	if (loadError) {
 		return (
 			<div className="flex items-center justify-center h-full">
-				<span className="text-xs text-kumo-error">{loadError}</span>
+				<span className="text-xs text-destructive">{loadError}</span>
 			</div>
 		);
 	}
 	if (!AgentChat) {
 		return (
 			<div className="flex flex-col items-center justify-center h-full gap-2">
-				<Loader size="base" />
-				<span className="text-xs text-kumo-subtle">正在加载助手……</span>
+				<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+				<span className="text-xs text-muted-foreground">正在加载助手……</span>
 			</div>
 		);
 	}
@@ -46,14 +46,14 @@ export default function AgentSidebar() {
 	return (
 		<div className="flex flex-col h-full">
 			{/* Tab bar */}
-			<div className="flex items-center border-b border-kumo-line shrink-0">
+			<div className="flex items-center border-b border-border shrink-0">
 				<button
 					type="button"
 					onClick={() => setActiveTab("agent")}
 					className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 bg-transparent cursor-pointer ${
 						activeTab === "agent"
-							? "border-kumo-brand text-kumo-default"
-							: "border-transparent text-kumo-subtle hover:text-kumo-default"
+							? "border-foreground text-foreground"
+							: "border-transparent text-muted-foreground hover:text-foreground"
 					}`}
 				>
 					<RobotIcon size={14} weight={activeTab === "agent" ? "fill" : "regular"} />
@@ -64,8 +64,8 @@ export default function AgentSidebar() {
 					onClick={() => setActiveTab("mcp")}
 					className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 bg-transparent cursor-pointer ${
 						activeTab === "mcp"
-							? "border-kumo-brand text-kumo-default"
-							: "border-transparent text-kumo-subtle hover:text-kumo-default"
+							? "border-foreground text-foreground"
+							: "border-transparent text-muted-foreground hover:text-foreground"
 					}`}
 				>
 					<PlugsIcon size={14} weight={activeTab === "mcp" ? "fill" : "regular"} />

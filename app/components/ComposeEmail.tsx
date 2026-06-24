@@ -2,9 +2,17 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Banner, Button, Dialog, Input, Text } from "@cloudflare/kumo";
 import { FloppyDiskIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react";
 import { useParams } from "react-router";
+import { Button } from "~/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RecipientInput from "./RecipientInput";
 import RichTextEditor from "./RichTextEditor";
@@ -15,7 +23,7 @@ export default function ComposeEmail() {
 		mailboxId: string;
 		folder: string;
 	}>();
-	
+
 	const { isComposeModalOpen, closeComposeModal } = useUIStore();
 
 	const {
@@ -40,17 +48,21 @@ export default function ComposeEmail() {
 	} = useComposeForm(mailboxId, folder);
 
 	return (
-		<Dialog.Root
+		<Dialog
 			open={isComposeModalOpen}
 			onOpenChange={(open) => !open && !isSending && closeComposeModal()}
 		>
-			<Dialog size="lg" className="p-6 max-h-[85vh] overflow-y-auto">
-				<Dialog.Title className="text-lg font-semibold mb-5">
-					{formTitle}
-				</Dialog.Title>
+			<DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+				<DialogHeader>
+					<DialogTitle>{formTitle}</DialogTitle>
+				</DialogHeader>
 				<form onSubmit={(e) => handleSend(e, closeComposeModal)} className="space-y-4">
-					{error && <Banner variant="error" text={error} />}
-					<div className="flex items-center gap-2">
+					{error && (
+						<div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+							{error}
+						</div>
+					)}
+					<div className="flex items-start gap-2">
 						<div className="flex-1">
 							<RecipientInput
 								label="收件人"
@@ -64,9 +76,9 @@ export default function ComposeEmail() {
 							<button
 								type="button"
 								onClick={() => setShowCcBcc(true)}
-								className="shrink-0 text-xs text-kumo-link hover:text-kumo-link-hover font-medium mt-5"
+								className="mt-7 shrink-0 text-xs font-medium text-muted-foreground hover:text-foreground"
 							>
-								CC / BCC
+								抄送 / 密送
 							</button>
 						)}
 					</div>
@@ -86,22 +98,21 @@ export default function ComposeEmail() {
 							placeholder="多个地址用逗号分隔"
 						/>
 					)}
-					<Input
-						label="主题"
-						type="text"
-						placeholder="邮件主题"
-						size="sm"
-						value={subject}
-						onChange={(e) => setSubject(e.target.value)}
-						required
-					/>
-					<div>
-						<Text size="sm" DANGEROUS_className="font-medium mb-1.5 block">
-							正文
-						</Text>
+					<div className="space-y-1.5">
+						<Label>主题</Label>
+						<Input
+							type="text"
+							placeholder="邮件主题"
+							value={subject}
+							onChange={(e) => setSubject(e.target.value)}
+							required
+						/>
+					</div>
+					<div className="space-y-1.5">
+						<Label>正文</Label>
 						<RichTextEditor value={body} onChange={setBody} />
 					</div>
-					<div className="flex justify-between items-center pt-2">
+					<div className="flex items-center justify-between pt-1">
 						<Button
 							type="button"
 							variant="ghost"
@@ -114,29 +125,26 @@ export default function ComposeEmail() {
 						<div className="flex items-center gap-2">
 							<Button
 								type="button"
-								variant="secondary"
+								variant="outline"
 								size="sm"
-								loading={isSavingDraft}
-								disabled={isSending}
-								icon={<FloppyDiskIcon size={14} />}
+								disabled={isSending || isSavingDraft}
 								onClick={handleSaveDraft}
 							>
+								<FloppyDiskIcon size={14} />
 								{isSavingDraft ? "保存中……" : "存草稿"}
 							</Button>
 							<Button
 								type="submit"
-								variant="primary"
 								size="sm"
-								loading={isSending}
 								disabled={isSavingDraft || isSending}
-								icon={<PaperPlaneTiltIcon size={14} />}
 							>
+								<PaperPlaneTiltIcon size={14} />
 								{isSending ? "发送中……" : "发送"}
 							</Button>
 						</div>
 					</div>
 				</form>
-			</Dialog>
-		</Dialog.Root>
+			</DialogContent>
+		</Dialog>
 	);
 }

@@ -2,9 +2,10 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Banner, Button, Input } from "@cloudflare/kumo";
 import { FloppyDiskIcon, PaperPlaneTiltIcon, XIcon } from "@phosphor-icons/react";
 import { useParams } from "react-router";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RecipientInput from "./RecipientInput";
 import RichTextEditor from "./RichTextEditor";
@@ -39,38 +40,39 @@ export default function ComposePanel() {
 	} = useComposeForm(mailboxId, folder);
 
 	return (
-		<div className="flex flex-col h-full bg-kumo-base">
-			<div className="flex items-center justify-between px-4 py-3 border-b border-kumo-line shrink-0 md:px-6">
-				<h2 className="text-base font-semibold text-kumo-default">
-					{formTitle}
-				</h2>
-				<div className="flex items-center gap-1">
-					<Button
-						variant="ghost"
-						shape="square"
-						size="sm"
-						icon={<XIcon size={18} />}
-						onClick={closeCompose}
-						disabled={isSending}
-						aria-label="关闭撰写"
-					/>
-				</div>
+		<div className="flex h-full flex-col bg-card">
+			<div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 md:px-6">
+				<h2 className="text-sm font-semibold text-foreground">{formTitle}</h2>
+				<Button
+					variant="ghost"
+					size="icon-sm"
+					onClick={closeCompose}
+					disabled={isSending}
+					aria-label="关闭撰写"
+					className="text-muted-foreground"
+				>
+					<XIcon size={18} />
+				</Button>
 			</div>
 
 			<form
 				onSubmit={(e) => handleSend(e, closePanel)}
-				className="flex flex-col flex-1 min-h-0 overflow-y-auto"
+				className="flex min-h-0 flex-1 flex-col overflow-y-auto"
 			>
-				<div className="p-4 md:p-6 space-y-4">
-					{error && <Banner variant="error" text={error} />}
+				<div className="space-y-4 p-4 md:p-6">
+					{error && (
+						<div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+							{error}
+						</div>
+					)}
 
 					<div className="space-y-3">
 						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
+							<label className="w-12 shrink-0 text-sm font-medium text-muted-foreground">
 								收件人
 							</label>
-							<div className="flex-1 flex items-center gap-2 min-w-0">
-								<div className="flex-1 min-w-0">
+							<div className="flex min-w-0 flex-1 items-center gap-2">
+								<div className="min-w-0 flex-1">
 									<RecipientInput
 										placeholder="recipient@example.com"
 										value={to}
@@ -82,9 +84,9 @@ export default function ComposePanel() {
 									<button
 										type="button"
 										onClick={() => setShowCcBcc(true)}
-										className="shrink-0 text-xs text-kumo-link hover:text-kumo-link-hover font-medium"
+										className="shrink-0 text-xs font-medium text-muted-foreground hover:text-foreground"
 									>
-										CC / BCC
+										抄送 / 密送
 									</button>
 								)}
 							</div>
@@ -92,7 +94,7 @@ export default function ComposePanel() {
 
 						{showCcBcc && (
 							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
+								<label className="w-12 shrink-0 text-sm font-medium text-muted-foreground">
 									抄送
 								</label>
 								<div className="flex-1">
@@ -107,7 +109,7 @@ export default function ComposePanel() {
 
 						{showCcBcc && (
 							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
+								<label className="w-12 shrink-0 text-sm font-medium text-muted-foreground">
 									密送
 								</label>
 								<div className="flex-1">
@@ -121,14 +123,13 @@ export default function ComposePanel() {
 						)}
 
 						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
+							<label className="w-12 shrink-0 text-sm font-medium text-muted-foreground">
 								主题
 							</label>
 							<div className="flex-1">
 								<Input
 									type="text"
 									placeholder="邮件主题"
-									size="sm"
 									value={subject}
 									onChange={(e) => setSubject(e.target.value)}
 									required
@@ -137,40 +138,40 @@ export default function ComposePanel() {
 						</div>
 					</div>
 
-					<div className="border border-kumo-line rounded-md overflow-hidden bg-kumo-base">
-						<RichTextEditor
-							value={body}
-							onChange={setBody}
-						/>
+					<div className="overflow-hidden rounded-md border border-border bg-card">
+						<RichTextEditor value={body} onChange={setBody} />
 					</div>
 				</div>
 
 				{/* Footer actions */}
-				<div className="mt-auto px-4 py-3 border-t border-kumo-line bg-kumo-fill/30 shrink-0 md:px-6">
+				<div className="mt-auto shrink-0 border-t border-border bg-muted/30 px-4 py-3 md:px-6">
 					<div className="flex items-center justify-between">
-						<Button type="button" variant="ghost" size="sm" onClick={closeCompose} disabled={isSending}>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							onClick={closeCompose}
+							disabled={isSending}
+						>
 							丢弃
 						</Button>
 						<div className="flex items-center gap-2">
 							<Button
 								type="button"
-								variant="secondary"
+								variant="outline"
 								size="sm"
-								loading={isSavingDraft}
-								disabled={isSending}
-								icon={<FloppyDiskIcon size={14} />}
+								disabled={isSending || isSavingDraft}
 								onClick={handleSaveDraft}
 							>
+								<FloppyDiskIcon size={14} />
 								{isSavingDraft ? "保存中……" : "存草稿"}
 							</Button>
 							<Button
 								type="submit"
-								variant="primary"
 								size="sm"
-								loading={isSending}
 								disabled={isSavingDraft || isSending}
-								icon={<PaperPlaneTiltIcon size={14} />}
 							>
+								<PaperPlaneTiltIcon size={14} />
 								{isSending ? "发送中……" : "发送"}
 							</Button>
 						</div>

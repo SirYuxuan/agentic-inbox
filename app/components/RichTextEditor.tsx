@@ -2,7 +2,6 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Button, Tooltip } from "@cloudflare/kumo";
 import {
 	ArrowClockwiseIcon,
 	ArrowCounterClockwiseIcon,
@@ -27,16 +26,46 @@ import Underline from "@tiptap/extension-underline";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect } from "react";
+import { Button } from "~/components/ui/button";
+import { Tooltip } from "~/components/ui/tooltip";
 
 interface RichTextEditorProps {
 	value: string;
 	onChange: (value: string) => void;
 }
 
-export default function RichTextEditor({
-	value,
-	onChange,
-}: RichTextEditorProps) {
+function TB({
+	label,
+	active,
+	disabled,
+	onClick,
+	children,
+}: {
+	label: string;
+	active?: boolean;
+	disabled?: boolean;
+	onClick: () => void;
+	children: React.ReactNode;
+}) {
+	return (
+		<Tooltip content={label}>
+			<Button
+				type="button"
+				variant={active ? "secondary" : "ghost"}
+				size="icon-sm"
+				disabled={disabled}
+				onClick={onClick}
+				aria-label={label}
+				className="h-7 w-7 text-muted-foreground data-[active=true]:text-foreground"
+				data-active={active ? "true" : undefined}
+			>
+				{children}
+			</Button>
+		</Tooltip>
+	);
+}
+
+export default function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 	const editor = useEditor({
 		extensions: [
 			StarterKit,
@@ -52,7 +81,7 @@ export default function RichTextEditor({
 		editorProps: {
 			attributes: {
 				class:
-					"prose prose-sm max-w-none focus:outline-none min-h-[180px] p-3 text-sm [&_blockquote]:border-l-2 [&_blockquote]:border-kumo-line [&_blockquote]:pl-3 [&_blockquote]:text-kumo-subtle [&_blockquote]:bg-kumo-tint [&_blockquote]:py-1 [&_blockquote]:my-2 [&_blockquote]:text-xs [&_blockquote]:rounded-r-sm",
+					"prose prose-sm max-w-none focus:outline-none min-h-[180px] p-3 text-sm [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:bg-muted [&_blockquote]:py-1 [&_blockquote]:my-2 [&_blockquote]:text-xs [&_blockquote]:rounded-r-sm",
 			},
 		},
 		onUpdate: ({ editor }) => {
@@ -63,11 +92,8 @@ export default function RichTextEditor({
 	useEffect(() => {
 		if (editor && !editor.isDestroyed && value !== editor.getHTML()) {
 			editor.commands.setContent(value);
-			// Place cursor at the start of the document (above quoted text)
 			const rafId = requestAnimationFrame(() => {
-				if (!editor.isDestroyed) {
-					editor.commands.focus('start');
-				}
+				if (!editor.isDestroyed) editor.commands.focus("start");
 			});
 			return () => cancelAnimationFrame(rafId);
 		}
@@ -88,146 +114,56 @@ export default function RichTextEditor({
 	if (!editor) return null;
 
 	return (
-		<div className="rounded-lg border border-kumo-line overflow-hidden flex flex-col h-full">
+		<div className="flex h-full flex-col overflow-hidden rounded-lg border border-border">
 			{/* Toolbar */}
-			<div className="flex flex-wrap items-center gap-0.5 bg-kumo-recessed px-2 py-1.5 border-b border-kumo-line shrink-0">
-				{/* Text formatting */}
-				<Tooltip content="加粗" side="bottom" asChild>
-					<Button
-						variant={editor.isActive("bold") ? "secondary" : "ghost"}
-						shape="square"
-						size="sm"
-						icon={<TextBIcon size={16} />}
-						onClick={() => editor.chain().focus().toggleBold().run()}
-						aria-label="加粗"
-					/>
-				</Tooltip>
-				<Tooltip content="斜体" side="bottom" asChild>
-					<Button
-						variant={editor.isActive("italic") ? "secondary" : "ghost"}
-						shape="square"
-						size="sm"
-						icon={<TextItalicIcon size={16} />}
-						onClick={() => editor.chain().focus().toggleItalic().run()}
-						aria-label="斜体"
-					/>
-				</Tooltip>
-				<Tooltip content="下划线" side="bottom" asChild>
-					<Button
-						variant={editor.isActive("underline") ? "secondary" : "ghost"}
-						shape="square"
-						size="sm"
-						icon={<TextUnderlineIcon size={16} />}
-						onClick={() => editor.chain().focus().toggleUnderline().run()}
-						aria-label="下划线"
-					/>
-				</Tooltip>
-				<Tooltip content="删除线" side="bottom" asChild>
-					<Button
-						variant={editor.isActive("strike") ? "secondary" : "ghost"}
-						shape="square"
-						size="sm"
-						icon={<TextStrikethroughIcon size={16} />}
-						onClick={() => editor.chain().focus().toggleStrike().run()}
-						aria-label="删除线"
-					/>
-				</Tooltip>
+			<div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border bg-muted/40 px-2 py-1.5">
+				<TB label="加粗" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
+					<TextBIcon size={16} />
+				</TB>
+				<TB label="斜体" active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}>
+					<TextItalicIcon size={16} />
+				</TB>
+				<TB label="下划线" active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}>
+					<TextUnderlineIcon size={16} />
+				</TB>
+				<TB label="删除线" active={editor.isActive("strike")} onClick={() => editor.chain().focus().toggleStrike().run()}>
+					<TextStrikethroughIcon size={16} />
+				</TB>
 
-				<div className="mx-1 h-5 w-px bg-kumo-fill" />
+				<div className="mx-1 h-5 w-px bg-border" />
 
-				{/* Lists */}
-				<Tooltip content="无序列表" side="bottom" asChild>
-					<Button
-						variant={editor.isActive("bulletList") ? "secondary" : "ghost"}
-						shape="square"
-						size="sm"
-						icon={<ListBulletsIcon size={16} />}
-						onClick={() => editor.chain().focus().toggleBulletList().run()}
-						aria-label="无序列表"
-					/>
-				</Tooltip>
-				<Tooltip content="有序列表" side="bottom" asChild>
-					<Button
-						variant={editor.isActive("orderedList") ? "secondary" : "ghost"}
-						shape="square"
-						size="sm"
-						icon={<ListNumbersIcon size={16} />}
-						onClick={() => editor.chain().focus().toggleOrderedList().run()}
-						aria-label="有序列表"
-					/>
-				</Tooltip>
+				<TB label="无序列表" active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+					<ListBulletsIcon size={16} />
+				</TB>
+				<TB label="有序列表" active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+					<ListNumbersIcon size={16} />
+				</TB>
 
-				<div className="mx-1 h-5 w-px bg-kumo-fill" />
+				<div className="mx-1 h-5 w-px bg-border" />
 
-				{/* Block formatting */}
-				<Tooltip content="引用" side="bottom" asChild>
-					<Button
-						variant={editor.isActive("blockquote") ? "secondary" : "ghost"}
-						shape="square"
-						size="sm"
-						icon={<QuotesIcon size={16} />}
-						onClick={() => editor.chain().focus().toggleBlockquote().run()}
-						aria-label="引用"
-					/>
-				</Tooltip>
-				<Tooltip content="链接" side="bottom" asChild>
-					<Button
-						variant={editor.isActive("link") ? "secondary" : "ghost"}
-						shape="square"
-						size="sm"
-						icon={<LinkSimpleIcon size={16} />}
-						onClick={setLink}
-						aria-label="链接"
-					/>
-				</Tooltip>
+				<TB label="引用" active={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+					<QuotesIcon size={16} />
+				</TB>
+				<TB label="链接" active={editor.isActive("link")} onClick={setLink}>
+					<LinkSimpleIcon size={16} />
+				</TB>
 				{editor.isActive("link") && (
-					<Tooltip content="移除链接" side="bottom" asChild>
-						<Button
-							variant="ghost"
-							shape="square"
-							size="sm"
-							icon={<LinkBreakIcon size={16} />}
-							onClick={() => editor.chain().focus().unsetLink().run()}
-							aria-label="移除链接"
-						/>
-					</Tooltip>
+					<TB label="移除链接" onClick={() => editor.chain().focus().unsetLink().run()}>
+						<LinkBreakIcon size={16} />
+					</TB>
 				)}
-				<Tooltip content="分割线" side="bottom" asChild>
-					<Button
-						variant="ghost"
-						shape="square"
-						size="sm"
-						icon={<MinusIcon size={16} />}
-						onClick={() => editor.chain().focus().setHorizontalRule().run()}
-						aria-label="分割线"
-					/>
-				</Tooltip>
+				<TB label="分割线" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+					<MinusIcon size={16} />
+				</TB>
 
-				<div className="mx-1 h-5 w-px bg-kumo-fill" />
+				<div className="mx-1 h-5 w-px bg-border" />
 
-				{/* Undo/Redo */}
-				<Tooltip content="撤销" side="bottom" asChild>
-					<Button
-						variant="ghost"
-						shape="square"
-						size="sm"
-						icon={<ArrowCounterClockwiseIcon size={16} />}
-						onClick={() => editor.chain().focus().undo().run()}
-						disabled={!editor.can().undo()}
-						aria-label="撤销"
-					/>
-				</Tooltip>
-				<Tooltip content="重做" side="bottom" asChild>
-					<Button
-						variant="ghost"
-						shape="square"
-						size="sm"
-						icon={<ArrowClockwiseIcon size={16} />}
-						onClick={() => editor.chain().focus().redo().run()}
-						disabled={!editor.can().redo()}
-						aria-label="重做"
-					/>
-				</Tooltip>
+				<TB label="撤销" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>
+					<ArrowCounterClockwiseIcon size={16} />
+				</TB>
+				<TB label="重做" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}>
+					<ArrowClockwiseIcon size={16} />
+				</TB>
 			</div>
 
 			{/* Editor content */}

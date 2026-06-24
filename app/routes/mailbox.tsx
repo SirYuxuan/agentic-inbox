@@ -62,7 +62,7 @@ export default function MailboxRoute() {
 			</div>
 
 			{/* Main content */}
-			<div className="flex-1 flex flex-col min-w-0 bg-kumo-base">
+			<div className="flex-1 flex flex-col min-w-0 bg-card">
 				<Header />
 				<main className="flex-1 overflow-hidden">
 					<Outlet />
@@ -71,7 +71,7 @@ export default function MailboxRoute() {
 
 			{/* Agent + MCP sidebar -- togglable on desktop */}
 			{isAgentPanelOpen && (
-				<div className="hidden lg:flex w-[380px] shrink-0 border-l border-kumo-line flex-col bg-kumo-base overflow-hidden">
+				<div className="hidden lg:flex w-[380px] shrink-0 border-l border-border flex-col bg-card overflow-hidden">
 					<AgentSidebar />
 				</div>
 			)}

@@ -2,16 +2,11 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import {
-	Button,
-	Empty,
-	LinkProvider,
-	Loader,
-	Toasty,
-	TooltipProvider,
-} from "@cloudflare/kumo";
+import { LinkProvider, Toasty, TooltipProvider } from "@cloudflare/kumo";
 import { WarningIcon } from "@phosphor-icons/react";
+import { Loader2 } from "lucide-react";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Button } from "~/components/ui/button";
 import { forwardRef, useState } from "react";
 import {
 	isRouteErrorResponse,
@@ -92,7 +87,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				<Meta />
 				<Links />
 			</head>
-			<body className="bg-kumo-recessed text-kumo-default antialiased">
+			<body className="bg-background text-foreground antialiased">
 				{children}
 				<ScrollRestoration />
 				<Scripts />
@@ -103,8 +98,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export function HydrateFallback() {
 	return (
-		<div className="flex items-center justify-center h-screen">
-			<Loader size="lg" />
+		<div className="flex h-screen items-center justify-center bg-background">
+			<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 		</div>
 	);
 }
@@ -146,22 +141,23 @@ export function ErrorBoundary({ error }: { error: unknown }) {
 	}
 
 	return (
-		<div className="flex items-center justify-center min-h-screen p-8">
-			<Empty
-				icon={<WarningIcon size={48} className="text-kumo-inactive" />}
-				title={status === 404 ? "404 — 页面未找到" : title}
-				description={description}
-				contents={
-					<Button
-						variant="primary"
-						onClick={() => {
-							window.location.href = "/";
-						}}
-					>
-						返回首页
-					</Button>
-				}
-			/>
+		<div className="flex min-h-screen items-center justify-center bg-background p-8">
+			<div className="flex flex-col items-center text-center">
+				<div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+					<WarningIcon size={28} className="text-muted-foreground" />
+				</div>
+				<h1 className="mb-1.5 text-lg font-semibold text-foreground">
+					{status === 404 ? "404 — 页面未找到" : title}
+				</h1>
+				<p className="mb-5 max-w-sm text-sm text-muted-foreground">{description}</p>
+				<Button
+					onClick={() => {
+						window.location.href = "/";
+					}}
+				>
+					返回首页
+				</Button>
+			</div>
 		</div>
 	);
 }

@@ -2,21 +2,27 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import {
-	Button,
-	Dialog,
-	Input,
-	Loader,
-	Text,
-	useKumoToastManager,
-} from "@cloudflare/kumo";
+import { useKumoToastManager } from "@cloudflare/kumo";
 import {
 	AddressBookIcon,
 	PencilSimpleIcon,
 	PlusIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
+import { Loader2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { Button } from "~/components/ui/button";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import {
 	useContacts,
 	useCreateContact,
@@ -102,82 +108,84 @@ export default function ContactsRoute() {
 
 	return (
 		<div className="h-full overflow-y-auto">
-			<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6">
-				<div className="mb-6">
-					<div className="flex items-center justify-between">
-						<h1 className="text-lg font-semibold text-kumo-default">通讯录</h1>
-						<Button
-							variant="primary"
-							icon={<PlusIcon size={16} />}
-							onClick={openCreate}
-						>
-							新建联系人
-						</Button>
+			<div className="max-w-2xl px-4 py-5 md:px-8 md:py-6">
+				{/* Header: title left, create button top-right */}
+				<div className="mb-5 flex items-center justify-between gap-4">
+					<div>
+						<h1 className="text-lg font-semibold text-foreground">通讯录</h1>
+						{contacts.length > 0 && (
+							<p className="mt-0.5 text-xs text-muted-foreground">
+								{contacts.length} 个联系人
+							</p>
+						)}
 					</div>
+					<Button size="sm" onClick={openCreate}>
+						<PlusIcon size={16} />
+						新建联系人
+					</Button>
 				</div>
 
 				{isLoading ? (
 					<div className="flex justify-center py-20">
-						<Loader size="lg" />
+						<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 					</div>
 				) : contacts.length > 0 ? (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
+					<div className="overflow-hidden rounded-xl border border-border bg-card">
 						{contacts.map((contact, idx) => (
 							<div
 								key={contact.id}
-								className={`group flex items-center gap-4 px-5 py-4 ${
-									idx > 0 ? "border-t border-kumo-line" : ""
+								className={`group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-accent/60 ${
+									idx > 0 ? "border-t border-border" : ""
 								}`}
 							>
-								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
+								<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
 									{contact.name.charAt(0).toUpperCase()}
 								</div>
 								<div className="min-w-0 flex-1">
-									<div className="text-sm font-medium text-kumo-default truncate">
+									<div className="truncate text-sm font-medium text-foreground">
 										{contact.name}
 									</div>
-									<div className="text-sm text-kumo-subtle truncate">
+									<div className="truncate text-xs text-muted-foreground">
 										{contact.email}
 									</div>
 								</div>
-								<div className="flex items-center gap-1 shrink-0">
+								<div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
 									<Button
 										variant="ghost"
-										shape="square"
-										size="sm"
-										icon={<PencilSimpleIcon size={16} />}
+										size="icon-sm"
+										className="text-muted-foreground"
 										aria-label={`编辑 ${contact.name}`}
 										onClick={() => openEdit(contact)}
-									/>
+									>
+										<PencilSimpleIcon size={16} />
+									</Button>
 									<Button
 										variant="ghost"
-										shape="square"
-										size="sm"
-										icon={<TrashIcon size={16} />}
+										size="icon-sm"
+										className="text-muted-foreground hover:text-destructive"
 										aria-label={`删除 ${contact.name}`}
 										onClick={() => setToDelete(contact)}
-									/>
+									>
+										<TrashIcon size={16} />
+									</Button>
 								</div>
 							</div>
 						))}
 					</div>
 				) : (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6">
+					<div className="rounded-xl border border-border bg-card px-6 py-16">
 						<div className="flex flex-col items-center text-center">
-							<div className="mb-4">
-								<AddressBookIcon size={48} weight="thin" className="text-kumo-subtle" />
+							<div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+								<AddressBookIcon size={24} className="text-muted-foreground" />
 							</div>
-							<h3 className="text-base font-semibold text-kumo-default mb-1.5">
+							<h3 className="mb-1.5 text-base font-semibold text-foreground">
 								还没有联系人
 							</h3>
-							<p className="text-sm text-kumo-subtle max-w-sm mb-5">
+							<p className="mb-5 max-w-sm text-sm text-muted-foreground">
 								添加常用联系人，写邮件时即可在收件人栏快速选择。
 							</p>
-							<Button
-								variant="primary"
-								icon={<PlusIcon size={16} />}
-								onClick={openCreate}
-							>
+							<Button size="sm" onClick={openCreate}>
+								<PlusIcon size={16} />
 								新建联系人
 							</Button>
 						</div>
@@ -186,85 +194,81 @@ export default function ContactsRoute() {
 			</div>
 
 			{/* Create / edit dialog */}
-			<Dialog.Root open={isFormOpen} onOpenChange={setIsFormOpen}>
-				<Dialog size="sm" className="p-6">
-					<Dialog.Title className="text-base font-semibold mb-5">
-						{editing ? "编辑联系人" : "新建联系人"}
-					</Dialog.Title>
+			<Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+				<DialogContent className="max-w-sm">
+					<DialogHeader>
+						<DialogTitle>{editing ? "编辑联系人" : "新建联系人"}</DialogTitle>
+					</DialogHeader>
 					<form onSubmit={handleSubmit} className="space-y-4">
-						{error && (
-							<Text variant="error" size="sm">
-								{error}
-							</Text>
-						)}
-						<Input
-							label="姓名"
-							placeholder="张三"
-							size="sm"
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							required
-						/>
-						<Input
-							label="邮箱"
-							type="email"
-							placeholder="zhangsan@example.com"
-							size="sm"
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							required
-						/>
-						<div className="flex justify-end gap-2 pt-2">
-							<Dialog.Close
-								render={(props) => (
-									<Button {...props} variant="secondary" size="sm">
-										取消
-									</Button>
-								)}
+						{error && <p className="text-sm text-destructive">{error}</p>}
+						<div className="space-y-1.5">
+							<Label>姓名</Label>
+							<Input
+								placeholder="张三"
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								required
 							/>
-							<Button type="submit" variant="primary" size="sm" loading={isSaving}>
+						</div>
+						<div className="space-y-1.5">
+							<Label>邮箱</Label>
+							<Input
+								type="email"
+								placeholder="zhangsan@example.com"
+								value={email}
+								onChange={(e) => setEmail(e.target.value)}
+								required
+							/>
+						</div>
+						<DialogFooter>
+							<DialogClose asChild>
+								<Button type="button" variant="outline" size="sm">
+									取消
+								</Button>
+							</DialogClose>
+							<Button type="submit" size="sm" disabled={isSaving}>
+								{isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
 								{editing ? "保存" : "添加"}
 							</Button>
-						</div>
+						</DialogFooter>
 					</form>
-				</Dialog>
-			</Dialog.Root>
+				</DialogContent>
+			</Dialog>
 
 			{/* Delete dialog */}
-			<Dialog.Root
+			<Dialog
 				open={toDelete !== null}
 				onOpenChange={(open) => {
 					if (!open) setToDelete(null);
 				}}
 			>
-				<Dialog size="sm" className="p-6">
-					<Dialog.Title className="text-base font-semibold mb-2">
-						删除联系人
-					</Dialog.Title>
-					<Dialog.Description className="text-kumo-subtle text-sm mb-5">
-						确定要删除{" "}
-						<strong className="text-kumo-default">{toDelete?.name}</strong>
-						{" "}吗？此操作无法撤销。
-					</Dialog.Description>
-					<div className="flex justify-end gap-2">
-						<Dialog.Close
-							render={(props) => (
-								<Button {...props} variant="secondary" size="sm">
-									取消
-								</Button>
-							)}
-						/>
+				<DialogContent className="max-w-sm">
+					<DialogHeader>
+						<DialogTitle>删除联系人</DialogTitle>
+						<DialogDescription>
+							确定要删除{" "}
+							<strong className="text-foreground">{toDelete?.name}</strong>
+							{" "}吗？此操作无法撤销。
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<DialogClose asChild>
+							<Button type="button" variant="outline" size="sm">
+								取消
+							</Button>
+						</DialogClose>
 						<Button
 							variant="destructive"
 							size="sm"
-							loading={isDeleting}
+							disabled={isDeleting}
 							onClick={handleDelete}
 						>
+							{isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
 							删除
 						</Button>
-					</div>
-				</Dialog>
-			</Dialog.Root>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

@@ -14,10 +14,10 @@ export default function EmailPanelHeader({
 	showThreadCount,
 }: EmailPanelHeaderProps) {
 	return (
-		<div className="px-4 py-3 border-b border-kumo-line shrink-0 md:px-6">
-			<h2 className="text-base font-semibold text-kumo-default">{subject}</h2>
+		<div className="shrink-0 border-b border-border px-4 py-3 md:px-6">
+			<h2 className="text-base font-semibold text-foreground">{subject}</h2>
 			{showThreadCount && (
-				<span className="text-xs text-kumo-subtle mt-0.5 block">
+				<span className="mt-0.5 block text-xs text-muted-foreground">
 					此会话共 {messageCount} 封邮件
 				</span>
 			)}

@@ -2,10 +2,12 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Button, Input, Tooltip } from "@cloudflare/kumo";
 import { GearSixIcon, ListIcon, MagnifyingGlassIcon, RobotIcon, XIcon } from "@phosphor-icons/react";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Tooltip } from "~/components/ui/tooltip";
 import { useUIStore } from "~/hooks/useUIStore";
 
 export default function Header() {
@@ -17,7 +19,6 @@ export default function Header() {
 	const [searchParams] = useSearchParams();
 	const { toggleSidebar, toggleAgentPanel, isAgentPanelOpen } = useUIStore();
 
-	// Sync search input with URL query param so it stays populated
 	const urlQuery = searchParams.get("q") || "";
 	useEffect(() => {
 		if (location.pathname.includes("/search") && urlQuery) {
@@ -41,42 +42,41 @@ export default function Header() {
 	};
 
 	const handleKeyDown = (e: KeyboardEvent) => {
-		if (e.key === "Enter") {
-			performSearch();
-		}
+		if (e.key === "Enter") performSearch();
 		if (e.key === "Escape") {
-			if (searchQuery) {
-				clearSearch();
-			} else {
-				setIsSearchExpanded(false);
-			}
+			if (searchQuery) clearSearch();
+			else setIsSearchExpanded(false);
 		}
 	};
 
 	const isSettingsActive = location.pathname.includes("/settings");
 
 	return (
-		<header className="flex items-center gap-2 px-3 py-2.5 bg-kumo-base border-b border-kumo-line sticky top-0 z-10 md:px-5 md:gap-4">
+		<header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card px-3 py-2.5 md:gap-4 md:px-5">
 			{/* Hamburger menu - mobile only */}
 			<Button
 				variant="ghost"
-				shape="square"
-				size="sm"
-				icon={<ListIcon size={20} />}
+				size="icon-sm"
 				onClick={toggleSidebar}
 				aria-label="切换侧边栏"
-				className="md:hidden shrink-0"
-			/>
+				className="shrink-0 md:hidden"
+			>
+				<ListIcon size={20} />
+			</Button>
 
-			{/* Search - full on desktop, collapsible on mobile */}
+			{/* Search */}
 			<div
-				className={`flex-1 max-w-lg transition-all flex items-center gap-1 ${
+				className={`flex max-w-lg flex-1 items-center gap-1 transition-all ${
 					isSearchExpanded ? "flex" : "hidden md:flex"
 				}`}
 			>
-				<div className="flex-1 relative flex items-center">
+				<div className="relative flex flex-1 items-center">
+					<MagnifyingGlassIcon
+						size={16}
+						className="pointer-events-none absolute left-2.5 text-muted-foreground"
+					/>
 					<Input
-						className="w-full"
+						className="w-full pl-8 pr-8"
 						aria-label="搜索邮件"
 						placeholder="搜索邮件……（可用 from:name、is:unread、has:attachment）"
 						value={searchQuery}
@@ -87,53 +87,44 @@ export default function Header() {
 						<button
 							type="button"
 							onClick={clearSearch}
-							className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-kumo-subtle hover:text-kumo-default hover:bg-kumo-tint transition-colors"
+							className="absolute right-2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 							aria-label="清除搜索"
 						>
 							<XIcon size={14} />
 						</button>
 					)}
 				</div>
-				<Tooltip content="搜索" side="bottom" asChild>
-					<Button
-						variant="ghost"
-						shape="square"
-						icon={<MagnifyingGlassIcon size={20} />}
-						onClick={performSearch}
-						aria-label="搜索"
-					/>
-				</Tooltip>
 			</div>
 
-			{/* Search toggle button - mobile only, hidden when search is expanded */}
+			{/* Search toggle - mobile only */}
 			{!isSearchExpanded && (
 				<Button
 					variant="ghost"
-					shape="square"
-					size="sm"
-					icon={<MagnifyingGlassIcon size={20} />}
+					size="icon-sm"
 					onClick={() => setIsSearchExpanded(true)}
 					aria-label="搜索"
-					className="md:hidden shrink-0"
-				/>
+					className="shrink-0 md:hidden"
+				>
+					<MagnifyingGlassIcon size={20} />
+				</Button>
 			)}
 
-			<div className="flex items-center gap-1 ml-auto shrink-0">
-				<Tooltip content={isAgentPanelOpen ? "隐藏 AI 助手" : "显示 AI 助手"} side="bottom" asChild>
+			<div className="ml-auto flex shrink-0 items-center gap-1">
+				<Tooltip content={isAgentPanelOpen ? "隐藏 AI 助手" : "显示 AI 助手"}>
 					<Button
 						variant={isAgentPanelOpen ? "secondary" : "ghost"}
-						shape="square"
-						icon={<RobotIcon size={20} />}
+						size="icon"
 						onClick={toggleAgentPanel}
 						aria-label="切换 AI 助手面板"
 						className="hidden lg:inline-flex"
-					/>
+					>
+						<RobotIcon size={19} />
+					</Button>
 				</Tooltip>
-				<Tooltip content="设置" side="bottom" asChild>
+				<Tooltip content="设置">
 					<Button
 						variant={isSettingsActive ? "secondary" : "ghost"}
-						shape="square"
-						icon={<GearSixIcon size={20} />}
+						size="icon"
 						onClick={() =>
 							navigate(
 								isSettingsActive
@@ -142,7 +133,9 @@ export default function Header() {
 							)
 						}
 						aria-label="设置"
-					/>
+					>
+						<GearSixIcon size={19} />
+					</Button>
 				</Tooltip>
 			</div>
 		</header>

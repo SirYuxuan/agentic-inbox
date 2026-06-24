@@ -8,7 +8,9 @@
  * Date formatting has been consolidated into `shared/dates.ts`.
  * Re-export for backwards compatibility with existing imports.
  */
+import { clsx, type ClassValue } from "clsx";
 import DOMPurify from "dompurify";
+import { twMerge } from "tailwind-merge";
 import { formatQuotedDate } from "shared/dates";
 import type { Attachment } from "~/types";
 
@@ -17,6 +19,11 @@ export {
 	formatDetailDate,
 	formatShortDate,
 } from "shared/dates";
+
+/** Merge Tailwind class names (shadcn/ui convention). */
+export function cn(...inputs: ClassValue[]): string {
+	return twMerge(clsx(inputs));
+}
 
 /** @deprecated Use `formatQuotedDate` from `shared/dates` directly. */
 export const formatComposeDate = formatQuotedDate;

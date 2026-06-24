@@ -2,7 +2,15 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Button, Dialog } from "@cloudflare/kumo";
+import { Button } from "~/components/ui/button";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "~/components/ui/dialog";
 import { downloadFile } from "~/lib/utils";
 import type { Email } from "~/types";
 
@@ -65,34 +73,36 @@ export default function EmailPanelDialogs({
 
 	return (
 		<>
-			<Dialog.Root
+			<Dialog
 				open={sourceViewEmail !== null}
 				onOpenChange={(open) => {
 					if (!open) onCloseSource();
 				}}
 			>
-				<Dialog size="lg">
-					<Dialog.Title>
-						邮件源码头部
-						{sourceViewEmail && (
-							<span className="text-sm font-normal text-kumo-subtle ml-2">
-								{sourceViewEmail.subject}
-							</span>
-						)}
-					</Dialog.Title>
+				<DialogContent className="max-w-2xl">
+					<DialogHeader>
+						<DialogTitle>
+							邮件源码头部
+							{sourceViewEmail && (
+								<span className="ml-2 text-sm font-normal text-muted-foreground">
+									{sourceViewEmail.subject}
+								</span>
+							)}
+						</DialogTitle>
+					</DialogHeader>
 					{sourceViewEmail && (
-						<div className="mt-4 max-h-[60vh] overflow-y-auto">
-							<table className="w-full text-sm border-collapse">
+						<div className="max-h-[60vh] overflow-y-auto">
+							<table className="w-full border-collapse text-sm">
 								<tbody>
 									{sourceHeaders.map((header, idx) => (
 										<tr
 											key={`${header.key}-${idx}`}
-											className={idx % 2 === 0 ? "bg-kumo-tint/50" : ""}
+											className={idx % 2 === 0 ? "bg-muted/40" : ""}
 										>
-											<td className="py-1.5 px-3 font-mono font-semibold text-kumo-default whitespace-nowrap align-top w-[160px]">
+											<td className="w-40 whitespace-nowrap px-3 py-1.5 align-top font-mono font-semibold text-foreground">
 												{header.key}
 											</td>
-											<td className="py-1.5 px-3 font-mono text-kumo-subtle break-all">
+											<td className="break-all px-3 py-1.5 font-mono text-muted-foreground">
 												{header.value}
 											</td>
 										</tr>
@@ -100,59 +110,57 @@ export default function EmailPanelDialogs({
 								</tbody>
 							</table>
 							{sourceHeaders.length === 0 && (
-								<p className="text-sm text-kumo-subtle text-center py-8">
+								<p className="py-8 text-center text-sm text-muted-foreground">
 									该邮件没有可用的头部数据。
 								</p>
 							)}
 						</div>
 					)}
-					<div className="flex justify-end mt-4">
-						<Dialog.Close>
-							<Button variant="secondary" size="sm">
+					<DialogFooter>
+						<DialogClose asChild>
+							<Button variant="outline" size="sm">
 								关闭
 							</Button>
-						</Dialog.Close>
-					</div>
-				</Dialog>
-			</Dialog.Root>
+						</DialogClose>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
-			<Dialog.Root
+			<Dialog
 				open={previewImage !== null}
 				onOpenChange={(open) => {
 					if (!open) onClosePreview();
 				}}
 			>
-				<Dialog size="lg">
-					<Dialog.Title>{previewImage?.filename}</Dialog.Title>
+				<DialogContent className="max-w-2xl">
+					<DialogHeader>
+						<DialogTitle>{previewImage?.filename}</DialogTitle>
+					</DialogHeader>
 					{previewImage && (
-						<div className="mt-4 flex flex-col items-center justify-center bg-kumo-tint/30 rounded-lg p-4 min-h-[200px]">
+						<div className="flex min-h-[200px] flex-col items-center justify-center rounded-lg bg-muted/40 p-4">
 							<img
 								src={previewImage.url}
 								alt={previewImage.filename}
-								className="max-w-full max-h-[70vh] object-contain rounded shadow-sm"
+								className="max-h-[70vh] max-w-full rounded object-contain shadow-sm"
 							/>
 						</div>
 					)}
-					<div className="flex justify-between items-center mt-4">
+					<DialogFooter className="justify-between">
 						<Button
-							variant="secondary"
+							variant="outline"
 							size="sm"
 							onClick={() => {
-								if (previewImage) {
-									downloadFile(previewImage.url, previewImage.filename);
-								}
+								if (previewImage) downloadFile(previewImage.url, previewImage.filename);
 							}}
 						>
 							下载原文件
 						</Button>
-						<Dialog.Close>
-							<Button variant="primary" size="sm">
-								关闭
-							</Button>
-						</Dialog.Close>
-					</div>
-				</Dialog>
-			</Dialog.Root>
+						<DialogClose asChild>
+							<Button size="sm">关闭</Button>
+						</DialogClose>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</>
 	);
 }

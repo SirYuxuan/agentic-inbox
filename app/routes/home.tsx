@@ -2,20 +2,24 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import {
-	Button,
-	Dialog,
-	Empty,
-	Input,
-	Loader,
-	Select,
-	Text,
-	useKumoToastManager,
-} from "@cloudflare/kumo";
-import { EnvelopeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { useKumoToastManager } from "@cloudflare/kumo";
+import { Inbox, Loader2, Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import api from "~/services/api";
 import {
 	useCreateMailbox,
@@ -140,60 +144,56 @@ export default function HomeRoute() {
 	const isLoading = !configData;
 
 	return (
-		<div className="min-h-screen bg-kumo-recessed">
-			<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
-				<div className="mb-8">
-					<div className="flex items-center justify-between">
-						<h1 className="text-2xl font-bold text-kumo-default">邮箱</h1>
-						{!isConfigured && (
-							<Button
-								variant="primary"
-								icon={<PlusIcon size={16} />}
-								onClick={() => setIsCreateOpen(true)}
-							>
-								新建邮箱
-							</Button>
+		<div className="min-h-screen bg-background text-foreground">
+			<div className="mx-auto max-w-xl px-6 py-16 md:py-24">
+				<div className="mb-8 flex items-end justify-between gap-4">
+					<div>
+						<h1 className="text-2xl font-semibold tracking-tight">邮箱</h1>
+						{domains.length > 0 && (
+							<p className="mt-1 text-sm text-muted-foreground">
+								{domains.join("、")}
+							</p>
 						)}
 					</div>
-					{domains.length > 0 && (
-						<p className="text-sm text-kumo-subtle mt-1">
-							{domains.join(", ")}
-						</p>
+					{!isConfigured && (
+						<Button size="sm" onClick={() => setIsCreateOpen(true)}>
+							<Plus className="h-4 w-4" />
+							新建邮箱
+						</Button>
 					)}
 				</div>
 
 				{isLoading ? (
-					<div className="flex justify-center py-20">
-						<Loader size="lg" />
+					<div className="flex justify-center py-24">
+						<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 					</div>
 				) : accounts.length > 0 ? (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
+					<div className="overflow-hidden rounded-xl border border-border bg-card">
 						{accounts.map((account, idx) => (
 							<RouterLink
 								key={account.id}
 								to={`/mailbox/${account.id}`}
-								className={`group flex items-center gap-4 px-5 py-4 no-underline transition-colors hover:bg-kumo-tint ${
-									idx > 0 ? "border-t border-kumo-line" : ""
+								className={`group flex items-center gap-3.5 px-4 py-3 no-underline transition-colors hover:bg-accent ${
+									idx > 0 ? "border-t border-border" : ""
 								}`}
 							>
-								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
+								<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
 									{account.name.charAt(0).toUpperCase()}
 								</div>
 								<div className="min-w-0 flex-1">
-									<div className="text-sm font-medium text-kumo-default truncate">
+									<div className="truncate text-sm font-medium">
 										{account.name}
 									</div>
-									<div className="text-sm text-kumo-subtle">
+									<div className="truncate text-xs text-muted-foreground">
 										{account.email}
 									</div>
 								</div>
 								{!isConfigured && (
 									<Button
 										variant="ghost"
-										size="sm"
-										shape="square"
-										icon={<TrashIcon size={16} />}
+										size="icon-sm"
 										aria-label={`删除邮箱 ${account.email}`}
+										className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
 										onClick={(e) => {
 											e.preventDefault();
 											e.stopPropagation();
@@ -203,35 +203,28 @@ export default function HomeRoute() {
 											});
 											setIsDeleteOpen(true);
 										}}
-									/>
+									>
+										<Trash2 className="h-4 w-4" />
+									</Button>
 								)}
 							</RouterLink>
 						))}
 					</div>
 				) : (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6">
+					<div className="rounded-xl border border-border bg-card px-6 py-16">
 						<div className="flex flex-col items-center text-center">
-							<div className="mb-4">
-								<EnvelopeIcon
-									size={48}
-									weight="thin"
-									className="text-kumo-subtle"
-								/>
+							<div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+								<Inbox className="h-6 w-6 text-muted-foreground" />
 							</div>
-							<h3 className="text-base font-semibold text-kumo-default mb-1.5">
-								还没有邮箱
-							</h3>
-							<p className="text-sm text-kumo-subtle max-w-sm mb-5">
+							<h3 className="mb-1.5 text-base font-semibold">还没有邮箱</h3>
+							<p className="mb-5 max-w-sm text-sm text-muted-foreground">
 								{isConfigured
 									? "邮件路由已配置，但还没有创建邮箱。创建后会自动显示在这里。"
 									: "创建一个邮箱，即可用你的域名收发邮件。"}
 							</p>
 							{!isConfigured && (
-								<Button
-									variant="primary"
-									icon={<PlusIcon size={16} />}
-									onClick={() => setIsCreateOpen(true)}
-								>
+								<Button size="sm" onClick={() => setIsCreateOpen(true)}>
+									<Plus className="h-4 w-4" />
 									创建邮箱
 								</Button>
 							)}
@@ -241,123 +234,104 @@ export default function HomeRoute() {
 			</div>
 
 			{/* Create Dialog */}
-			<Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-				<Dialog size="sm" className="p-6">
-					<Dialog.Title className="text-base font-semibold mb-5">
-						创建新邮箱
-					</Dialog.Title>
+			<Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+				<DialogContent className="max-w-sm">
+					<DialogHeader>
+						<DialogTitle>创建新邮箱</DialogTitle>
+					</DialogHeader>
 					<form onSubmit={handleCreate} className="space-y-4">
 						{createError && (
-							<Text variant="error" size="sm">
-								{createError}
-							</Text>
+							<p className="text-sm text-destructive">{createError}</p>
 						)}
-						<div>
-							<span className="text-sm font-medium text-kumo-default mb-1.5 block">
-								邮箱地址
-							</span>
+						<div className="space-y-1.5">
+							<Label>邮箱地址</Label>
 							<div className="flex items-center gap-2">
-								<div className="flex-1">
-									<Input
-										aria-label="地址前缀"
-										placeholder="info"
-										size="sm"
-										value={newPrefix}
-										onChange={(e) => setNewPrefix(e.target.value)}
-										required
-									/>
-								</div>
-								<span className="text-sm text-kumo-subtle">@</span>
+								<Input
+									aria-label="地址前缀"
+									placeholder="info"
+									value={newPrefix}
+									onChange={(e) => setNewPrefix(e.target.value)}
+									required
+								/>
+								<span className="text-sm text-muted-foreground">@</span>
 								{domains.length > 1 ? (
-									<div className="flex-1">
-							<Select
-								aria-label="域名"
-								value={selectedDomain}
-								onValueChange={(value) => {
-									if (value) setSelectedDomain(value);
-								}}
-							>
-											{domains.map((d) => (
-												<Select.Option key={d} value={d}>
-													{d}
-												</Select.Option>
-											))}
-										</Select>
-									</div>
+									<select
+										aria-label="域名"
+										value={selectedDomain}
+										onChange={(e) => setSelectedDomain(e.target.value)}
+										className="h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									>
+										{domains.map((d) => (
+											<option key={d} value={d}>
+												{d}
+											</option>
+										))}
+									</select>
 								) : (
-									<span className="text-sm text-kumo-subtle">
+									<Badge variant="secondary" className="shrink-0">
 										{selectedDomain || "无域名"}
-									</span>
+									</Badge>
 								)}
 							</div>
 						</div>
-						<Input
-							label="显示名称（可选）"
-							placeholder="Info"
-							size="sm"
-							value={newName}
-							onChange={(e) => setNewName(e.target.value)}
-						/>
-						<div className="flex justify-end gap-2 pt-2">
-							<Dialog.Close
-								render={(props) => (
-									<Button {...props} variant="secondary" size="sm">
-										取消
-									</Button>
-								)}
+						<div className="space-y-1.5">
+							<Label>显示名称（可选）</Label>
+							<Input
+								placeholder="Info"
+								value={newName}
+								onChange={(e) => setNewName(e.target.value)}
 							/>
-							<Button
-								type="submit"
-								variant="primary"
-								size="sm"
-								loading={isCreating}
-								disabled={!selectedDomain}
-							>
+						</div>
+						<DialogFooter className="pt-2">
+							<DialogClose asChild>
+								<Button type="button" variant="outline" size="sm">
+									取消
+								</Button>
+							</DialogClose>
+							<Button type="submit" size="sm" disabled={!selectedDomain || isCreating}>
+								{isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
 								创建
 							</Button>
-						</div>
+						</DialogFooter>
 					</form>
-				</Dialog>
-			</Dialog.Root>
+				</DialogContent>
+			</Dialog>
 
 			{/* Delete Dialog */}
-			<Dialog.Root
+			<Dialog
 				open={isDeleteOpen}
 				onOpenChange={(open) => {
 					setIsDeleteOpen(open);
 					if (!open) setMailboxToDelete(null);
 				}}
 			>
-				<Dialog size="sm" className="p-6">
-					<Dialog.Title className="text-base font-semibold mb-2">
-						删除邮箱
-					</Dialog.Title>
-					<Dialog.Description className="text-kumo-subtle text-sm mb-5">
-						确定要删除{" "}
-						<strong className="text-kumo-default">
-							{mailboxToDelete?.email}
-						</strong>
-						{" "}吗？此操作无法撤销。
-					</Dialog.Description>
-					<div className="flex justify-end gap-2">
-						<Dialog.Close
-							render={(props) => (
-								<Button {...props} variant="secondary" size="sm">
-									取消
-								</Button>
-							)}
-						/>
+				<DialogContent className="max-w-sm">
+					<DialogHeader>
+						<DialogTitle>删除邮箱</DialogTitle>
+						<DialogDescription>
+							确定要删除{" "}
+							<strong className="text-foreground">{mailboxToDelete?.email}</strong>
+							{" "}吗？此操作无法撤销。
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<DialogClose asChild>
+							<Button type="button" variant="outline" size="sm">
+								取消
+							</Button>
+						</DialogClose>
 						<Button
 							variant="destructive"
 							size="sm"
-							loading={isDeleting}
+							disabled={isDeleting}
 							onClick={handleDelete}
 						>
+							{isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
 							删除
 						</Button>
-					</div>
-				</Dialog>
-			</Dialog.Root>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

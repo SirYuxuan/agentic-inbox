@@ -2,11 +2,15 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Badge, Button, Loader, Pagination, Tooltip } from "@cloudflare/kumo";
+import { Pagination } from "@cloudflare/kumo";
 import { ArrowLeftIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import MailboxSplitView from "~/components/MailboxSplitView";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { Tooltip } from "~/components/ui/tooltip";
 import { formatListDate, getSnippetText } from "~/lib/utils";
 import { useUpdateEmail } from "~/queries/emails";
 import { useSearchEmails, SEARCH_PAGE_SIZE } from "~/queries/search";
@@ -25,7 +29,7 @@ function highlightTerms(text: string, query: string): React.ReactNode {
 		// Use case-insensitive string comparison instead of regex.test() with g flag,
 		// which has stateful lastIndex causing alternating true/false results.
 		const lowerEscaped = escaped.toLowerCase();
-		return parts.map((part, i) => part.toLowerCase() === lowerEscaped ? <mark key={i} className="bg-kumo-warning-muted text-kumo-default rounded-sm px-0.5">{part}</mark> : part);
+		return parts.map((part, i) => part.toLowerCase() === lowerEscaped ? <mark key={i} className="bg-amber-100 text-foreground rounded-sm px-0.5">{part}</mark> : part);
 	} catch { return text; }
 }
 
@@ -73,17 +77,17 @@ export default function SearchResultsRoute() {
 			isComposing={isComposing}
 		>
 			<>
-				<div className="flex items-center gap-2 px-4 py-3.5 border-b border-kumo-line shrink-0 md:px-5">
-					<Tooltip content="返回收件箱" side="bottom" asChild><Button variant="ghost" shape="square" size="sm" icon={<ArrowLeftIcon size={18} />} onClick={() => navigate(`/mailbox/${mailboxId}/emails/inbox`)} aria-label="返回收件箱" /></Tooltip>
-					<div className="min-w-0 flex-1"><h1 className="text-lg font-semibold text-kumo-default truncate">搜索结果</h1>{!isLoading && <span className="text-sm text-kumo-subtle">{totalCount} 条结果{urlQuery ? `（“${urlQuery}”）` : ""}</span>}</div>
+				<div className="flex items-center gap-2 px-4 py-3.5 border-b border-border shrink-0 md:px-5">
+					<Tooltip content="返回收件箱"><Button variant="ghost" size="icon-sm" onClick={() => navigate(`/mailbox/${mailboxId}/emails/inbox`)} aria-label="返回收件箱" className="text-muted-foreground"><ArrowLeftIcon size={18} /></Button></Tooltip>
+					<div className="min-w-0 flex-1"><h1 className="text-lg font-semibold text-foreground truncate">搜索结果</h1>{!isLoading && <span className="text-sm text-muted-foreground">{totalCount} 条结果{urlQuery ? `（“${urlQuery}”）` : ""}</span>}</div>
 				</div>
 				<div className="flex-1 overflow-y-auto">
-					{isLoading ? <div className="flex justify-center py-16"><Loader size="lg" /></div> : results.length === 0 ? (
+					{isLoading ? <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div> : results.length === 0 ? (
 						<div className="flex flex-col items-center justify-center py-24 px-6 text-center">
-							<div className="mb-4"><MagnifyingGlassIcon size={48} weight="thin" className="text-kumo-subtle" /></div>
-							<h3 className="text-base font-semibold text-kumo-default mb-1.5">未找到结果</h3>
-							<p className="text-sm text-kumo-subtle max-w-xs">{urlQuery ? `没有匹配“${urlQuery}”的结果。试试换个关键词或检查拼写。` : "输入搜索词，按主题、发件人或内容查找邮件。"}</p>
-							{urlQuery && <p className="text-xs text-kumo-subtle mt-3 max-w-sm">提示：可使用运算符，如 <code className="bg-kumo-tint px-1 rounded">from:name</code>、<code className="bg-kumo-tint px-1 rounded">is:unread</code>、<code className="bg-kumo-tint px-1 rounded">has:attachment</code>、<code className="bg-kumo-tint px-1 rounded">before:2025-01-01</code></p>}
+							<div className="mb-4"><MagnifyingGlassIcon size={48} weight="thin" className="text-muted-foreground" /></div>
+							<h3 className="text-base font-semibold text-foreground mb-1.5">未找到结果</h3>
+							<p className="text-sm text-muted-foreground max-w-xs">{urlQuery ? `没有匹配“${urlQuery}”的结果。试试换个关键词或检查拼写。` : "输入搜索词，按主题、发件人或内容查找邮件。"}</p>
+							{urlQuery && <p className="text-xs text-muted-foreground mt-3 max-w-sm">提示：可使用运算符，如 <code className="bg-accent px-1 rounded">from:name</code>、<code className="bg-accent px-1 rounded">is:unread</code>、<code className="bg-accent px-1 rounded">has:attachment</code>、<code className="bg-accent px-1 rounded">before:2025-01-01</code></p>}
 						</div>
 					) : (
 						<div>{results.map((email) => {
@@ -91,19 +95,19 @@ export default function SearchResultsRoute() {
 							const snippet = getSnippetText(email.snippet, 120);
 							const folderName = (email as Email & { folder_name?: string }).folder_name;
 							return (
-								<div key={email.id} role="button" tabIndex={0} onClick={() => handleRowClick(email)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowClick(email); } }} className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-2.5 md:px-5 md:py-3 ${isPanelOpen ? "md:px-4 md:py-2.5" : ""} ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}>
-									<div className="w-2.5 shrink-0 flex justify-center">{!email.read && <div className="h-2 w-2 rounded-full bg-kumo-brand" />}</div>
+								<div key={email.id} role="button" tabIndex={0} onClick={() => handleRowClick(email)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowClick(email); } }} className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-border px-4 py-2.5 md:px-5 md:py-3 ${isPanelOpen ? "md:px-4 md:py-2.5" : ""} ${isSelected ? "bg-accent" : "hover:bg-accent"}`}>
+									<div className="w-2.5 shrink-0 flex justify-center">{!email.read && <div className="h-2 w-2 rounded-full bg-foreground" />}</div>
 									<div className="min-w-0 flex-1">
-										<div className="flex items-center gap-2"><span className={`truncate text-sm ${!email.read ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}>{highlightTerms(email.sender.split("@")[0], urlQuery)}</span>{folderName && <Badge variant="outline">{folderDisplayName(folderName)}</Badge>}<span className="text-sm text-kumo-subtle shrink-0 ml-auto">{formatListDate(email.date)}</span></div>
-										<div className={`truncate text-sm mt-0.5 ${!email.read ? "font-medium text-kumo-default" : "text-kumo-subtle"}`}>{highlightTerms(email.subject, urlQuery)}</div>
-										{snippet && <div className="truncate text-xs text-kumo-subtle mt-0.5">{highlightTerms(snippet, urlQuery)}</div>}
+										<div className="flex items-center gap-2"><span className={`truncate text-sm ${!email.read ? "font-semibold text-foreground" : "text-foreground"}`}>{highlightTerms(email.sender.split("@")[0], urlQuery)}</span>{folderName && <Badge variant="outline">{folderDisplayName(folderName)}</Badge>}<span className="text-sm text-muted-foreground shrink-0 ml-auto">{formatListDate(email.date)}</span></div>
+										<div className={`truncate text-sm mt-0.5 ${!email.read ? "font-medium text-foreground" : "text-muted-foreground"}`}>{highlightTerms(email.subject, urlQuery)}</div>
+										{snippet && <div className="truncate text-xs text-muted-foreground mt-0.5">{highlightTerms(snippet, urlQuery)}</div>}
 									</div>
 								</div>
 							);
 						})}</div>
 					)}
 				</div>
-				{totalCount > SEARCH_PAGE_SIZE && <div className="flex justify-center py-3 border-t border-kumo-line shrink-0"><Pagination page={currentPage} setPage={setPage} perPage={SEARCH_PAGE_SIZE} totalCount={totalCount} /></div>}
+				{totalCount > SEARCH_PAGE_SIZE && <div className="flex justify-center py-3 border-t border-border shrink-0"><Pagination page={currentPage} setPage={setPage} perPage={SEARCH_PAGE_SIZE} totalCount={totalCount} /></div>}
 			</>
 		</MailboxSplitView>
 	);
