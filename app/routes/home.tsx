@@ -3,7 +3,21 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useKumoToastManager } from "@cloudflare/kumo";
-import { ChevronLeft, ChevronRight, GripVertical, Inbox, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+	AtSign,
+	CheckCircle2,
+	ChevronLeft,
+	ChevronRight,
+	GripVertical,
+	Inbox,
+	Loader2,
+	Mail,
+	Network,
+	Plus,
+	Route,
+	ShieldCheck,
+	Trash2,
+} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
@@ -20,6 +34,7 @@ import {
 } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import { cn } from "~/lib/utils";
 import api from "~/services/api";
 import {
 	getMailboxOrderKey,
@@ -36,6 +51,30 @@ import {
 import { queryKeys } from "~/queries/keys";
 
 const MAILBOX_PAGE_SIZE = 8;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseMailboxEntries(
+	value: string,
+	defaultDomain: string,
+): { email: string; name: string }[] {
+	const entries = value
+		.split(/[\s,，;；]+/)
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+	const seen = new Set<string>();
+
+	return entries.map((entry) => {
+		const email = (entry.includes("@") ? entry : `${entry}@${defaultDomain}`).toLowerCase();
+		if (!EMAIL_RE.test(email)) {
+			throw new Error(`邮箱格式不正确：${entry}`);
+		}
+		if (seen.has(email)) {
+			throw new Error(`邮箱重复：${email}`);
+		}
+		seen.add(email);
+		return { email, name: email.split("@")[0] || email };
+	});
+}
 
 export function meta() {
 	return [{ title: "Agentic Inbox" }];
@@ -113,16 +152,34 @@ export default function HomeRoute() {
 	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault();
 		setCreateError(null);
-		if (!newPrefix || !selectedDomain) {
-			setCreateError("请填写所有字段");
+		if (!newPrefix.trim()) {
+			setCreateError("请填写邮箱地址");
 			return;
 		}
-		const email = `${newPrefix}@${selectedDomain}`;
-		const name = newName || newPrefix;
+		let mailboxEntries: { email: string; name: string }[];
+		try {
+			mailboxEntries = parseMailboxEntries(newPrefix, selectedDomain);
+		} catch (err) {
+			setCreateError(err instanceof Error ? err.message : "邮箱格式不正确");
+			return;
+		}
 		setIsCreating(true);
 		try {
-			await createMailbox.mutateAsync({ email, name });
-			toastManager.add({ title: "邮箱创建成功！" });
+			await Promise.all(
+				mailboxEntries.map((entry) =>
+					createMailbox.mutateAsync({
+						email: entry.email,
+						name: mailboxEntries.length === 1 && newName.trim()
+							? newName.trim()
+							: entry.name,
+					}),
+				),
+			);
+			toastManager.add({
+				title: mailboxEntries.length === 1
+					? "邮箱创建成功！"
+					: `已创建 ${mailboxEntries.length} 个邮箱`,
+			});
 			setIsCreateOpen(false);
 			setNewPrefix("");
 			setNewName("");
@@ -193,138 +250,255 @@ export default function HomeRoute() {
 	};
 
 	const isLoading = !configData;
+	const mailboxCount = orderedAccounts.length;
+	const configuredCount = emailAddresses.length;
+	const routeMode = isConfigured ? "固定路由" : "手动管理";
+	const primaryDomain = domains[0] || "未配置";
 
 	return (
-		<div className="min-h-screen bg-background text-foreground">
-			<div className="mx-auto max-w-xl px-6 py-16 md:py-24">
-				<div className="mb-8 flex items-end justify-between gap-4">
-					<div>
-						<h1 className="text-2xl font-semibold tracking-tight">邮箱</h1>
-						{domains.length > 0 && (
-							<p className="mt-1 text-sm text-muted-foreground">
-								{domains.join("、")}
-							</p>
-						)}
+		<div className="min-h-screen bg-muted/30 text-foreground">
+			<div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-7 sm:px-6 lg:px-8 lg:py-10">
+				<header className="mb-4 flex flex-col gap-3 border-b border-border/80 pb-4 md:flex-row md:items-center md:justify-between">
+					<div className="flex min-w-0 flex-wrap items-center gap-2">
+						<h1 className="mr-1 text-xl font-semibold tracking-tight">
+							邮箱
+						</h1>
+						<Badge variant="secondary" className="rounded-full px-2.5">
+							{routeMode}
+						</Badge>
+						<div className="flex flex-wrap gap-2">
+							{domains.length > 0 ? (
+								domains.map((domain) => (
+									<Badge key={domain} variant="outline" className="rounded-full bg-background/80 px-2.5">
+										<AtSign className="h-3.5 w-3.5" />
+										{domain}
+									</Badge>
+								))
+							) : (
+								<Badge variant="outline" className="rounded-full bg-background/80 px-2.5">
+									<AtSign className="h-3.5 w-3.5" />
+									未配置域名
+								</Badge>
+							)}
+						</div>
 					</div>
 					{!isConfigured && (
-						<Button size="sm" onClick={() => setIsCreateOpen(true)}>
+						<Button onClick={() => setIsCreateOpen(true)}>
 							<Plus className="h-4 w-4" />
 							新建邮箱
 						</Button>
 					)}
-				</div>
+				</header>
 
 				{isLoading ? (
-					<div className="flex justify-center py-24">
-						<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+					<div className="flex flex-1 items-center justify-center">
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Loader2 className="h-5 w-5 animate-spin" />
+							加载中
+						</div>
 					</div>
 				) : orderedAccounts.length > 0 ? (
 					<>
-					<div className="overflow-hidden rounded-xl border border-border bg-card">
-						{visibleAccounts.map((account, idx) => {
-							const orderKey = getMailboxOrderKey(account);
-							return (
-							<RouterLink
-								key={account.id}
-								to={`/mailbox/${account.id}`}
-								draggable
-								onDragStart={(e) => {
-									e.dataTransfer.effectAllowed = "move";
-									e.dataTransfer.setData("text/plain", orderKey);
-									setDraggedEmail(orderKey);
-								}}
-								onDragOver={(e) => {
-									e.preventDefault();
-									e.dataTransfer.dropEffect = "move";
-									setDragOverEmail(orderKey);
-								}}
-								onDragLeave={() => {
-									setDragOverEmail((current) => current === orderKey ? null : current);
-								}}
-								onDrop={(e) => {
-									e.preventDefault();
-									const sourceEmail = e.dataTransfer.getData("text/plain") || draggedEmail;
-									if (sourceEmail) moveMailbox(sourceEmail, orderKey);
-									setDraggedEmail(null);
-									setDragOverEmail(null);
-								}}
-								onDragEnd={() => {
-									setDraggedEmail(null);
-									setDragOverEmail(null);
-								}}
-								className={`group flex items-center gap-3 px-4 py-3 no-underline transition-colors hover:bg-accent ${
-									idx > 0 ? "border-t border-border" : ""
-								} ${
-									dragOverEmail === orderKey && draggedEmail !== orderKey ? "bg-accent/70" : ""
-								} ${
-									draggedEmail === orderKey ? "opacity-60" : ""
-								}`}
-							>
-								<GripVertical className="h-4 w-4 shrink-0 text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100" />
-								<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-									{account.name.charAt(0).toUpperCase()}
-								</div>
-								<div className="min-w-0 flex-1">
-									<div className="truncate text-sm font-medium">
-										{account.name}
-									</div>
-									<div className="truncate text-xs text-muted-foreground">
-										{account.email}
-									</div>
-								</div>
-								{!isConfigured && (
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										aria-label={`删除邮箱 ${account.email}`}
-										className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
-										onClick={(e) => {
-											e.preventDefault();
-											e.stopPropagation();
-											setMailboxToDelete({
-												id: account.id,
-												email: account.email,
-											});
-											setIsDeleteOpen(true);
-										}}
-									>
-										<Trash2 className="h-4 w-4" />
-									</Button>
-								)}
-							</RouterLink>
-							);
-						})}
-					</div>
-					{pageCount > 1 && (
-						<div className="mt-4 flex items-center justify-center gap-2">
-							<Button
-								variant="outline"
-								size="icon-sm"
-								aria-label="上一页"
-								disabled={page === 1}
-								onClick={() => setPage((current) => Math.max(1, current - 1))}
-							>
-								<ChevronLeft className="h-4 w-4" />
-							</Button>
-							<div className="min-w-16 text-center text-xs text-muted-foreground">
-								{page} / {pageCount}
-							</div>
-							<Button
-								variant="outline"
-								size="icon-sm"
-								aria-label="下一页"
-								disabled={page === pageCount}
-								onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-							>
-								<ChevronRight className="h-4 w-4" />
-							</Button>
+					<div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm shadow-sm">
+						<div className="flex items-center gap-2 pr-3">
+							<Mail className="h-4 w-4 text-muted-foreground" />
+							<span className="font-medium">{mailboxCount}</span>
+							<span className="text-muted-foreground">邮箱</span>
 						</div>
-					)}
+						<div className="h-4 w-px bg-border" />
+						<div className="flex items-center gap-2 px-3">
+							<AtSign className="h-4 w-4 text-muted-foreground" />
+							<span className="font-medium">{domains.length || 0}</span>
+							<span className="text-muted-foreground">域名</span>
+						</div>
+						<div className="h-4 w-px bg-border" />
+						<div className="flex items-center gap-2 pl-3">
+							<Route className="h-4 w-4 text-muted-foreground" />
+							<span className="font-medium">{configuredCount || "不限"}</span>
+							<span className="text-muted-foreground">路由地址</span>
+						</div>
+					</div>
+
+					<div className="grid flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+						<section className="min-w-0">
+							<div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+								<div className="hidden grid-cols-[28px_minmax(0,1fr)_160px_44px] items-center gap-3 border-b border-border bg-muted/50 px-5 py-3 text-xs font-medium text-muted-foreground md:grid">
+									<div />
+									<div>邮箱</div>
+									<div>域名</div>
+									<div />
+								</div>
+								{visibleAccounts.map((account, idx) => {
+									const orderKey = getMailboxOrderKey(account);
+									const domain = account.email.split("@")[1] || primaryDomain;
+									return (
+										<RouterLink
+											key={account.id}
+											to={`/mailbox/${account.id}`}
+											draggable
+											onDragStart={(e) => {
+												e.dataTransfer.effectAllowed = "move";
+												e.dataTransfer.setData("text/plain", orderKey);
+												setDraggedEmail(orderKey);
+											}}
+											onDragOver={(e) => {
+												e.preventDefault();
+												e.dataTransfer.dropEffect = "move";
+												setDragOverEmail(orderKey);
+											}}
+											onDragLeave={() => {
+												setDragOverEmail((current) => current === orderKey ? null : current);
+											}}
+											onDrop={(e) => {
+												e.preventDefault();
+												const sourceEmail = e.dataTransfer.getData("text/plain") || draggedEmail;
+												if (sourceEmail) moveMailbox(sourceEmail, orderKey);
+												setDraggedEmail(null);
+												setDragOverEmail(null);
+											}}
+											onDragEnd={() => {
+												setDraggedEmail(null);
+												setDragOverEmail(null);
+											}}
+											className={cn(
+												"group grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3.5 no-underline transition-colors hover:bg-accent/60 md:grid-cols-[28px_minmax(0,1fr)_160px_44px] md:px-5",
+												idx > 0 && "border-t border-border",
+												dragOverEmail === orderKey && draggedEmail !== orderKey && "bg-accent/70",
+												draggedEmail === orderKey && "opacity-60",
+											)}
+										>
+											<GripVertical className="h-4 w-4 shrink-0 text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100" />
+											<div className="flex min-w-0 items-center gap-3">
+												<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-sm font-semibold text-foreground ring-1 ring-border">
+													{account.name.charAt(0).toUpperCase()}
+												</div>
+												<div className="min-w-0">
+													<div className="truncate text-sm font-medium">
+														{account.name}
+													</div>
+													<div className="truncate text-xs text-muted-foreground">
+														{account.email}
+													</div>
+												</div>
+											</div>
+											<div className="hidden truncate text-sm text-muted-foreground md:block">
+												{domain}
+											</div>
+											{!isConfigured ? (
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													aria-label={`删除邮箱 ${account.email}`}
+													className="justify-self-end text-muted-foreground opacity-100 hover:text-destructive md:opacity-0 md:transition-opacity md:group-hover:opacity-100"
+													onClick={(e) => {
+														e.preventDefault();
+														e.stopPropagation();
+														setMailboxToDelete({
+															id: account.id,
+															email: account.email,
+														});
+														setIsDeleteOpen(true);
+													}}
+												>
+													<Trash2 className="h-4 w-4" />
+												</Button>
+											) : (
+												<div className="hidden md:block" />
+											)}
+										</RouterLink>
+									);
+								})}
+							</div>
+							{pageCount > 1 && (
+								<div className="mt-4 flex items-center justify-center gap-2">
+									<Button
+										variant="outline"
+										size="icon-sm"
+										aria-label="上一页"
+										disabled={page === 1}
+										onClick={() => setPage((current) => Math.max(1, current - 1))}
+									>
+										<ChevronLeft className="h-4 w-4" />
+									</Button>
+									<div className="min-w-14 text-center text-xs text-muted-foreground">
+										{page} / {pageCount}
+									</div>
+									<Button
+										variant="outline"
+										size="icon-sm"
+										aria-label="下一页"
+										disabled={page === pageCount}
+										onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+									>
+										<ChevronRight className="h-4 w-4" />
+									</Button>
+								</div>
+							)}
+						</section>
+
+						<aside className="space-y-4">
+							<div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+								<div className="mb-4 flex items-center gap-2">
+									<Mail className="h-4 w-4 text-muted-foreground" />
+									<h2 className="text-sm font-medium">概览</h2>
+								</div>
+								<div className="space-y-3.5 text-sm">
+									<div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
+										<span className="text-muted-foreground">邮箱</span>
+										<span className="font-medium">{mailboxCount}</span>
+									</div>
+									<div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
+										<span className="text-muted-foreground">域名</span>
+										<span className="truncate font-medium">{domains.length || 0}</span>
+									</div>
+									<div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
+										<span className="text-muted-foreground">路由地址</span>
+										<span className="font-medium">{configuredCount || "不限"}</span>
+									</div>
+								</div>
+							</div>
+
+							<div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+								<div className="mb-4 flex items-center gap-2">
+									<Network className="h-4 w-4 text-muted-foreground" />
+									<h2 className="text-sm font-medium">路由</h2>
+								</div>
+								<div className="space-y-4">
+									<div className="rounded-lg border border-border bg-background px-3 py-3">
+										<div className="text-xs text-muted-foreground">主域名</div>
+										<div className="mt-1 truncate text-sm font-medium">{primaryDomain}</div>
+									</div>
+									<div className="rounded-lg border border-border bg-background px-3 py-3">
+										<div className="text-xs text-muted-foreground">创建模式</div>
+										<div className="mt-1 flex items-center gap-2 text-sm font-medium">
+											<ShieldCheck className="h-4 w-4 text-muted-foreground" />
+											{routeMode}
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+								<div className="flex items-start gap-3">
+									<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+										<CheckCircle2 className="h-4 w-4" />
+									</div>
+									<div className="min-w-0">
+										<div className="text-sm font-medium">本地偏好已启用</div>
+										<div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+											邮箱排序会保存在当前浏览器。
+										</div>
+									</div>
+								</div>
+							</div>
+						</aside>
+					</div>
 					</>
 				) : (
-					<div className="rounded-xl border border-border bg-card px-6 py-16">
+					<div className="flex flex-1 items-center justify-center">
+					<div className="w-full max-w-lg rounded-xl border border-border bg-card px-6 py-16 shadow-sm">
 						<div className="flex flex-col items-center text-center">
-							<div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+							<div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
 								<Inbox className="h-6 w-6 text-muted-foreground" />
 							</div>
 							<h3 className="mb-1.5 text-base font-semibold">还没有邮箱</h3>
@@ -341,6 +515,7 @@ export default function HomeRoute() {
 							)}
 						</div>
 					</div>
+					</div>
 				)}
 			</div>
 
@@ -356,34 +531,39 @@ export default function HomeRoute() {
 						)}
 						<div className="space-y-1.5">
 							<Label>邮箱地址</Label>
-							<div className="flex items-center gap-2">
-								<Input
-									aria-label="地址前缀"
-									placeholder="info"
-									value={newPrefix}
-									onChange={(e) => setNewPrefix(e.target.value)}
-									required
-								/>
-								<span className="text-sm text-muted-foreground">@</span>
-								{domains.length > 1 ? (
-									<select
-										aria-label="域名"
-										value={selectedDomain}
-										onChange={(e) => setSelectedDomain(e.target.value)}
-										className="h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-									>
-										{domains.map((d) => (
-											<option key={d} value={d}>
-												{d}
-											</option>
-										))}
-									</select>
-								) : (
-									<Badge variant="secondary" className="shrink-0">
-										{selectedDomain || "无域名"}
-									</Badge>
-								)}
-							</div>
+							<textarea
+								aria-label="邮箱地址"
+								placeholder="info&#10;sales&#10;support@example.com"
+								value={newPrefix}
+								onChange={(e) => setNewPrefix(e.target.value)}
+								required
+								rows={4}
+								className="min-h-24 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							/>
+							<p className="text-xs text-muted-foreground">
+								支持一行一个，或用逗号、空格分隔；未带 @ 的条目会使用默认域名。
+							</p>
+						</div>
+						<div className="space-y-1.5">
+							<Label>默认域名</Label>
+							{domains.length > 1 ? (
+								<select
+									aria-label="默认域名"
+									value={selectedDomain}
+									onChange={(e) => setSelectedDomain(e.target.value)}
+									className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								>
+									{domains.map((d) => (
+										<option key={d} value={d}>
+											{d}
+										</option>
+									))}
+								</select>
+							) : (
+								<Badge variant="secondary" className="w-fit shrink-0">
+									{selectedDomain || "无域名"}
+								</Badge>
+							)}
 						</div>
 						<div className="space-y-1.5">
 							<Label>显示名称（可选）</Label>
@@ -392,6 +572,9 @@ export default function HomeRoute() {
 								value={newName}
 								onChange={(e) => setNewName(e.target.value)}
 							/>
+							<p className="text-xs text-muted-foreground">
+								批量创建时会自动使用邮箱前缀作为显示名称。
+							</p>
 						</div>
 						<DialogFooter className="pt-2">
 							<DialogClose asChild>
@@ -399,7 +582,7 @@ export default function HomeRoute() {
 									取消
 								</Button>
 							</DialogClose>
-							<Button type="submit" size="sm" disabled={!selectedDomain || isCreating}>
+							<Button type="submit" size="sm" disabled={!newPrefix.trim() || isCreating}>
 								{isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
 								创建
 							</Button>
