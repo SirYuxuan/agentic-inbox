@@ -4,18 +4,25 @@
 
 interface EmailPanelHeaderProps {
 	subject: string;
+	translatedSubject?: string;
 	messageCount: number;
 	showThreadCount: boolean;
 }
 
 export default function EmailPanelHeader({
 	subject,
+	translatedSubject,
 	messageCount,
 	showThreadCount,
 }: EmailPanelHeaderProps) {
 	return (
 		<div className="shrink-0 border-b border-border px-4 py-3 md:px-6">
 			<h2 className="text-base font-semibold text-foreground">{subject}</h2>
+			{translatedSubject && (
+				<div className="mt-1 text-sm text-muted-foreground">
+					{translatedSubject}
+				</div>
+			)}
 			{showThreadCount && (
 				<span className="mt-0.5 block text-xs text-muted-foreground">
 					此会话共 {messageCount} 封邮件

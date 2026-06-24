@@ -229,6 +229,16 @@ export function useMoveEmail() {
 	});
 }
 
+export function useTranslateEmail() {
+	return useMutation({
+		mutationFn: ({
+			mailboxId,
+			id,
+		}: { mailboxId: string; id: string }) =>
+			api.translateEmail(mailboxId, id),
+	});
+}
+
 export function useSaveDraft() {
 	const invalidate = useInvalidateEmailData();
 	return useMutation({

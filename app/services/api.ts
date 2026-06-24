@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Contact, Email, Folder, Mailbox } from "~/types";
+import type { Contact, Email, EmailTranslation, Folder, Mailbox } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -123,6 +123,8 @@ const api = {
 		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`),
 	moveEmail: (mailboxId: string, id: string, folderId: string) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/move`, { folderId }),
+	translateEmail: (mailboxId: string, id: string) =>
+		post<EmailTranslation>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/translate`),
 	getThread: (mailboxId: string, threadId: string, opts?: { signal?: AbortSignal }) =>
 		get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, { signal: opts?.signal }),
 	markThreadRead: (mailboxId: string, threadId: string) =>

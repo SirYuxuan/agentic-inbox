@@ -16,6 +16,8 @@ export interface MailboxSettings {
 	agentSystemPrompt?: string;
 	/** When false, skip auto-drafting an AI reply on new inbound email. Defaults to enabled. */
 	autoDraftEnabled?: boolean;
+	/** Sender email addresses whose remote images may load automatically. */
+	trustedImageSenders?: string[];
 }
 
 export interface Mailbox {
@@ -57,6 +59,11 @@ export interface Email {
 	participants?: string;
 	needs_reply?: boolean;
 	has_draft?: boolean;
+}
+
+export interface EmailTranslation {
+	subject: string;
+	body: string;
 }
 
 export interface Attachment {

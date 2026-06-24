@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useKumoToastManager } from "@cloudflare/kumo";
-import { ArrowCounterClockwiseIcon, RobotIcon } from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon, RobotIcon, XIcon } from "@phosphor-icons/react";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
@@ -12,6 +12,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Switch } from "~/components/ui/switch";
+import { normalizeEmailAddress } from "~/lib/utils";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 
 // Placeholder shown in the textarea when no custom prompt is set.
@@ -27,6 +28,7 @@ export default function SettingsRoute() {
 	const [displayName, setDisplayName] = useState("");
 	const [agentPrompt, setAgentPrompt] = useState("");
 	const [autoDraft, setAutoDraft] = useState(true);
+	const [trustedImageSenders, setTrustedImageSenders] = useState<string[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
 
 	useEffect(() => {
@@ -34,6 +36,11 @@ export default function SettingsRoute() {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
 			setAutoDraft(mailbox.settings?.autoDraftEnabled !== false);
+			setTrustedImageSenders(
+				(mailbox.settings?.trustedImageSenders ?? [])
+					.map(normalizeEmailAddress)
+					.filter(Boolean),
+			);
 		}
 	}, [mailbox]);
 
@@ -45,6 +52,7 @@ export default function SettingsRoute() {
 			fromName: displayName,
 			agentSystemPrompt: agentPrompt.trim() || undefined,
 			autoDraftEnabled: autoDraft,
+			trustedImageSenders,
 		};
 		try {
 			await updateMailboxMutation.mutateAsync({ mailboxId, settings });
@@ -57,6 +65,9 @@ export default function SettingsRoute() {
 	};
 
 	const handleResetPrompt = () => setAgentPrompt("");
+	const removeTrustedSender = (sender: string) => {
+		setTrustedImageSenders((prev) => prev.filter((item) => item !== sender));
+	};
 
 	if (!mailbox) {
 		return (
@@ -109,6 +120,38 @@ export default function SettingsRoute() {
 								aria-label="新邮件自动起草回复"
 							/>
 						</div>
+					</div>
+
+					{/* Trusted image senders */}
+					<div className="rounded-xl border border-border bg-card p-5">
+						<div className="mb-3 text-sm font-medium text-foreground">
+							已信任图片发件人
+						</div>
+						{trustedImageSenders.length > 0 ? (
+							<div className="space-y-2">
+								{trustedImageSenders.map((sender) => (
+									<div
+										key={sender}
+										className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+									>
+										<span className="min-w-0 truncate text-sm text-foreground">
+											{sender}
+										</span>
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											onClick={() => removeTrustedSender(sender)}
+											aria-label={`移除 ${sender}`}
+											className="shrink-0 text-muted-foreground"
+										>
+											<XIcon size={16} />
+										</Button>
+									</div>
+								))}
+							</div>
+						) : (
+							<div className="text-sm text-muted-foreground">暂无信任的发件人</div>
+						)}
 					</div>
 
 					{/* Agent system prompt */}

@@ -85,6 +85,17 @@ export function stripHtml(html: string): string {
 	return html.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 }
 
+export function normalizeEmailAddress(value?: string | null): string {
+	if (!value) return "";
+	const match = value.match(/<([^<>@\s]+@[^<>\s]+)>/);
+	return (match?.[1] || value).trim().toLowerCase();
+}
+
+export function hasRemoteImages(html?: string | null): boolean {
+	if (!html) return false;
+	return /<img\b[^>]+(?:src|srcset)\s*=\s*["']?\s*https?:\/\//i.test(html);
+}
+
 function decodeHtmlEntities(text: string): string {
 	return text
 		.replace(/&#(\d+);/g, (_match: string, code: string) =>

@@ -8,6 +8,7 @@ import PostalMime from "postal-mime";
 import { z } from "zod";
 import { sendEmail } from "./email-sender";
 import { storeAttachments, type StoredAttachment } from "./lib/attachments";
+import { translateEmailContent } from "./lib/ai";
 import {
 	validateSender,
 	SenderValidationError,
@@ -189,7 +190,7 @@ app.post("/api/v1/mailboxes", async (c) => {
 	}
 	const key = `mailboxes/${email}.json`;
 	if (await c.env.BUCKET.head(key)) return c.json({ error: "Mailbox already exists" }, 409);
-	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" } };
+	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" }, trustedImageSenders: [] };
 	const finalSettings = { ...defaultSettings, ...settings };
 	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
 	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(email));
@@ -334,6 +335,22 @@ app.post("/api/v1/mailboxes/:mailboxId/emails/:id/move", async (c: AppContext) =
 	const { folderId } = (await c.req.json()) as { folderId: string };
 	const success = await c.var.mailboxStub.moveEmail(c.req.param("id")!, folderId);
 	return success ? c.json({ status: "moved" }) : c.json({ error: "Folder not found" }, 400);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/translate", async (c: AppContext) => {
+	const email = await c.var.mailboxStub.getEmail(c.req.param("id")!);
+	if (!email) return c.json({ error: "Email not found" }, 404);
+
+	try {
+		const translation = await translateEmailContent(c.env.AI, {
+			subject: email.subject,
+			body: email.body,
+		});
+		return c.json(translation);
+	} catch (e) {
+		console.error("Email translation failed:", (e as Error).message);
+		return c.json({ error: "翻译失败，请稍后重试" }, 502);
+	}
 });
 
 // -- Threads --------------------------------------------------------

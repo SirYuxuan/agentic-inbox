@@ -12,6 +12,8 @@ import {
 } from "@phosphor-icons/react";
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import RemoteImageNotice from "~/components/email-panel/RemoteImageNotice";
+import TranslationBlock from "~/components/email-panel/TranslationBlock";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Tooltip } from "~/components/ui/tooltip";
@@ -19,10 +21,11 @@ import { cn } from "~/lib/utils";
 import {
 	formatDetailDate,
 	formatShortDate,
+	hasRemoteImages,
 	rewriteInlineImages,
 	stripHtml,
 } from "~/lib/utils";
-import type { Email } from "~/types";
+import type { Email, EmailTranslation } from "~/types";
 
 interface ThreadMessageProps {
 	email: Email;
@@ -32,7 +35,11 @@ interface ThreadMessageProps {
 	isDraft?: boolean;
 	isSending?: boolean;
 	isExpanded: boolean;
+	translation?: EmailTranslation;
+	allowRemoteImages?: boolean;
 	onToggleExpand: () => void;
+	onShowRemoteImages: () => void;
+	onTrustSender: () => void;
 	onSendDraft?: () => void;
 	onEditDraft?: () => void;
 	onDeleteDraft?: () => void;
@@ -65,7 +72,11 @@ export default function ThreadMessage({
 	isDraft,
 	isSending,
 	isExpanded,
+	translation,
+	allowRemoteImages,
 	onToggleExpand,
+	onShowRemoteImages,
+	onTrustSender,
 	onSendDraft,
 	onEditDraft,
 	onDeleteDraft,
@@ -78,6 +89,7 @@ export default function ThreadMessage({
 		isDraft && "border-l-2 border-l-amber-500 bg-amber-500/[0.03]",
 	);
 	const senderLabel = isDraft ? "草稿回复" : isSelf ? "我" : email.sender;
+	const showRemoteImageNotice = hasRemoteImages(email.body) && !allowRemoteImages;
 
 	if (!isExpanded) {
 		return (
@@ -160,12 +172,27 @@ export default function ThreadMessage({
 					</div>
 				</div>
 
+				{showRemoteImageNotice && (
+					<RemoteImageNotice
+						sender={email.sender}
+						onShowOnce={onShowRemoteImages}
+						onTrustSender={onTrustSender}
+						className="mb-3 md:ml-[42px]"
+					/>
+				)}
+
 				<div className="md:ml-[42px]">
 					<EmailIframe
+						allowRemoteImages={allowRemoteImages}
 						body={rewriteInlineImages(email.body || "", mailboxId || "", email.id, email.attachments)}
 						autoSize
 					/>
 				</div>
+
+				<TranslationBlock
+					translation={translation}
+					className="mt-3 md:ml-[42px]"
+				/>
 
 				{isDraft && (onSendDraft || onEditDraft || onDeleteDraft) && (
 					<div className="mt-3 flex gap-2 md:ml-[42px]">

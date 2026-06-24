@@ -11,13 +11,13 @@ import EmailPanelHeader from "~/components/email-panel/EmailPanelHeader";
 import EmailPanelToolbar from "~/components/email-panel/EmailPanelToolbar";
 import SingleMessageView from "~/components/email-panel/SingleMessageView";
 import ThreadMessage from "~/components/email-panel/ThreadMessage";
-import { splitEmailList, toEmailListValue } from "~/lib/utils";
+import { normalizeEmailAddress, splitEmailList, toEmailListValue } from "~/lib/utils";
 import api from "~/services/api";
-import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
+import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useTranslateEmail, useUpdateEmail } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
-import { useMailbox } from "~/queries/mailboxes";
+import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
-import type { Email, Folder, Mailbox } from "~/types";
+import type { Email, EmailTranslation, Folder, Mailbox } from "~/types";
 
 function EmailPanelSkeleton() {
 	return (
@@ -38,8 +38,10 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const updateEmail = useUpdateEmail();
 	const deleteEmailMut = useDeleteEmail();
 	const moveEmailMut = useMoveEmail();
+	const translateEmailMut = useTranslateEmail();
 	const sendEmailMut = useSendEmail();
 	const replyMut = useReplyToEmail();
+	const updateMailboxMutation = useUpdateMailbox();
 	const { data: folders = [] } = useFolders(mailboxId) as { data?: Folder[] };
 	const { data: currentMailbox } = useMailbox(mailboxId) as {
 		data?: Mailbox;
@@ -49,6 +51,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const [isSending, setIsSending] = useState(false);
 	const [sourceViewEmail, setSourceViewEmail] = useState<Email | null>(null);
 	const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+	const [translations, setTranslations] = useState<Record<string, EmailTranslation>>({});
+	const [trustedSenderOverrides, setTrustedSenderOverrides] = useState<string[]>([]);
+	const [remoteImagesVisibleOnce, setRemoteImagesVisibleOnce] = useState<Set<string>>(new Set());
 	const [previewImage, setPreviewImage] = useState<{ url: string; filename: string } | null>(null);
 	const isDraftFolder = folder === Folders.DRAFT;
 
@@ -85,11 +90,71 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 	const moveToFolders = useMemo(() => { const cur = folder || email?.folder_id; return folders.filter((f) => f.id !== cur); }, [folders, folder, email?.folder_id]);
 
+	const trustedImageSenders = useMemo(() => {
+		const configured = currentMailbox?.settings?.trustedImageSenders ?? [];
+		return new Set([...configured, ...trustedSenderOverrides].map(normalizeEmailAddress).filter(Boolean));
+	}, [currentMailbox?.settings?.trustedImageSenders, trustedSenderOverrides]);
+
 	if (!email) return <EmailPanelSkeleton />;
 
 	const toggleStar = () => { if (mailboxId) updateEmail.mutate({ mailboxId, id: email.id, data: { starred: !email.starred } }); };
 	const handleMove = (folderId: string) => { if (mailboxId) { moveEmailMut.mutate({ mailboxId, id: email.id, folderId }); closePanel(); } };
 	const handleDelete = () => { if (mailboxId) { if (!window.confirm("确定要删除这封邮件吗？")) return; deleteEmailMut.mutate({ mailboxId, id: email.id }); closePanel(); } };
+
+	const isRemoteImagesAllowed = (msg: Email) => {
+		const sender = normalizeEmailAddress(msg.sender);
+		return (
+			remoteImagesVisibleOnce.has(msg.id) ||
+			(sender !== "" && sender === normalizeEmailAddress(currentMailbox?.email)) ||
+			trustedImageSenders.has(sender)
+		);
+	};
+
+	const handleShowRemoteImages = (msgId: string) => {
+		setRemoteImagesVisibleOnce((prev) => new Set(prev).add(msgId));
+	};
+
+	const handleTrustSender = async (sender: string) => {
+		if (!mailboxId || !currentMailbox) return;
+		const normalizedSender = normalizeEmailAddress(sender);
+		if (!normalizedSender) return;
+
+		const existing = currentMailbox.settings?.trustedImageSenders ?? [];
+		const nextTrusted = Array.from(
+			new Set([...existing.map(normalizeEmailAddress), normalizedSender].filter(Boolean)),
+		);
+
+		try {
+			await updateMailboxMutation.mutateAsync({
+				mailboxId,
+				settings: {
+					...currentMailbox.settings,
+					trustedImageSenders: nextTrusted,
+				},
+			});
+			setTrustedSenderOverrides((prev) =>
+				prev.includes(normalizedSender) ? prev : [...prev, normalizedSender],
+			);
+			toastManager.add({ title: "已信任此发件人" });
+		} catch {
+			toastManager.add({ title: "保存信任发件人失败", variant: "error" });
+		}
+	};
+
+	const handleTranslate = async () => {
+		if (!mailboxId) return;
+		try {
+			const translation = await translateEmailMut.mutateAsync({
+				mailboxId,
+				id: email.id,
+			});
+			setTranslations((prev) => ({ ...prev, [email.id]: translation }));
+			toastManager.add({ title: "翻译完成" });
+		} catch (err) {
+			const message = (err instanceof Error ? err.message : null) || "翻译失败，请稍后重试。";
+			toastManager.add({ title: message, variant: "error" });
+		}
+	};
 
 	const handleEditDraft = (draftMsg?: Email) => {
 		const target = draftMsg || email;
@@ -146,6 +211,8 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				mailboxId={mailboxId}
 				isDraftFolder={isDraftFolder}
 				isSending={isSending}
+				isTranslating={translateEmailMut.isPending}
+				hasTranslation={!!translations[email.id]}
 				moveToFolders={moveToFolders}
 				onBack={closePanel}
 				onSendDraft={() => handleSendDraft()}
@@ -171,12 +238,14 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					}
 				}}
 				onMove={handleMove}
+				onTranslate={handleTranslate}
 				onViewSource={() => setSourceViewEmail(email)}
 				onDelete={handleDelete}
 			/>
 
 			<EmailPanelHeader
 				subject={email.subject}
+				translatedSubject={translations[email.id]?.subject}
 				messageCount={allMessages.length}
 				showThreadCount={hasThread}
 			/>
@@ -195,11 +264,15 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 								isDraft={isDraft}
 								isSending={isDraft ? isSending : false}
 								isExpanded={expandedMessages.has(msg.id)}
+								allowRemoteImages={isRemoteImagesAllowed(msg)}
 								onToggleExpand={() => toggleExpand(msg.id)}
+								onShowRemoteImages={() => handleShowRemoteImages(msg.id)}
+								onTrustSender={() => handleTrustSender(msg.sender)}
 								onSendDraft={isDraft ? () => handleSendDraft(msg) : undefined}
 								onEditDraft={isDraft ? () => handleEditDraft(msg) : undefined}
 								onDeleteDraft={isDraft ? () => handleDeleteDraft(msg) : undefined}
 								onViewSource={() => setSourceViewEmail(msg)}
+								translation={translations[msg.id]}
 								onPreviewImage={(url, filename) =>
 									setPreviewImage({ url, filename })
 								}
@@ -210,6 +283,10 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					<SingleMessageView
 						email={email}
 						mailboxId={mailboxId}
+						translation={translations[email.id]}
+						allowRemoteImages={isRemoteImagesAllowed(email)}
+						onShowRemoteImages={() => handleShowRemoteImages(email.id)}
+						onTrustSender={() => handleTrustSender(email.sender)}
 						onPreviewImage={(url, filename) =>
 							setPreviewImage({ url, filename })
 						}

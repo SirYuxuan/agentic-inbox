@@ -9,6 +9,8 @@ interface EmailIframeProps {
 	body: string;
 	/** When true, iframe auto-sizes to content height instead of filling parent */
 	autoSize?: boolean;
+	/** When false, remote http(s) images are blocked while same-origin attachment images still load. */
+	allowRemoteImages?: boolean;
 }
 
 /**
@@ -27,7 +29,11 @@ interface EmailIframeProps {
  * - A strict CSP meta tag blocks external resource loads inside the
  *   iframe as a defense-in-depth layer.
  */
-export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
+export default function EmailIframe({
+	body,
+	autoSize,
+	allowRemoteImages,
+}: EmailIframeProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [height, setHeight] = useState(autoSize ? 100 : 0);
 
@@ -67,6 +73,10 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 		});
 
 		const padding = autoSize ? "0" : "24px";
+		const currentOrigin = window.location.origin;
+		const imgSrc = allowRemoteImages
+			? `data: cid: ${currentOrigin} https: http:`
+			: `data: cid: ${currentOrigin}`;
 
 		// Height-reporting script: sends body.scrollHeight to the parent.
 		// Runs inside the opaque-origin sandbox so it has zero access to
@@ -91,7 +101,7 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https:; script-src 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src ${imgSrc}; script-src 'unsafe-inline';">
 <style>
 * { box-sizing: border-box; }
 html {
@@ -137,7 +147,7 @@ ul, ol { padding-left: 20px; margin: 4px 0; }
 </head>
 <body>${cleanBody}${heightScript}</body>
 </html>`;
-	}, [body, autoSize]);
+	}, [body, autoSize, allowRemoteImages]);
 
 	return (
 		<iframe

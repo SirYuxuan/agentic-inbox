@@ -16,8 +16,10 @@ import {
 	PencilSimpleIcon,
 	StarIcon,
 	TrashIcon,
+	TranslateIcon,
 	XIcon,
 } from "@phosphor-icons/react";
+import { Loader2 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Tooltip } from "~/components/ui/tooltip";
 import type { Folder, Email } from "~/types";
@@ -27,6 +29,8 @@ interface EmailPanelToolbarProps {
 	mailboxId?: string;
 	isDraftFolder: boolean;
 	isSending: boolean;
+	isTranslating?: boolean;
+	hasTranslation?: boolean;
 	moveToFolders: Folder[];
 	lastReceivedMessage?: Email;
 	onBack: () => void;
@@ -38,6 +42,7 @@ interface EmailPanelToolbarProps {
 	onToggleStar: () => void;
 	onToggleRead: () => void;
 	onMove: (folderId: string) => void;
+	onTranslate: () => void;
 	onViewSource: () => void;
 	onDelete: () => void;
 }
@@ -46,6 +51,8 @@ export default function EmailPanelToolbar({
 	email,
 	isDraftFolder,
 	isSending,
+	isTranslating,
+	hasTranslation,
 	moveToFolders,
 	onBack,
 	onSendDraft,
@@ -56,6 +63,7 @@ export default function EmailPanelToolbar({
 	onToggleStar,
 	onToggleRead,
 	onMove,
+	onTranslate,
 	onViewSource,
 	onDelete,
 }: EmailPanelToolbarProps) {
@@ -133,6 +141,23 @@ export default function EmailPanelToolbar({
 			</Tooltip>
 
 			<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
+
+			<Tooltip content={hasTranslation ? "重新翻译" : "翻译"}>
+				<Button
+					variant="ghost"
+					size="icon-sm"
+					onClick={onTranslate}
+					disabled={isTranslating}
+					aria-label={hasTranslation ? "重新翻译" : "翻译"}
+					className="text-muted-foreground"
+				>
+					{isTranslating ? (
+						<Loader2 className="h-4 w-4 animate-spin" />
+					) : (
+						<TranslateIcon size={18} />
+					)}
+				</Button>
+			</Tooltip>
 
 			<div className="ml-auto flex items-center gap-0.5">
 				<Tooltip content="查看源码">

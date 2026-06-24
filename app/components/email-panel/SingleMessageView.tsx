@@ -4,20 +4,32 @@
 
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
-import { formatDetailDate, rewriteInlineImages } from "~/lib/utils";
-import type { Email } from "~/types";
+import RemoteImageNotice from "~/components/email-panel/RemoteImageNotice";
+import TranslationBlock from "~/components/email-panel/TranslationBlock";
+import { formatDetailDate, hasRemoteImages, rewriteInlineImages } from "~/lib/utils";
+import type { Email, EmailTranslation } from "~/types";
 
 interface SingleMessageViewProps {
 	email: Email;
 	mailboxId?: string;
+	translation?: EmailTranslation;
+	allowRemoteImages?: boolean;
+	onShowRemoteImages: () => void;
+	onTrustSender: () => void;
 	onPreviewImage: (url: string, filename: string) => void;
 }
 
 export default function SingleMessageView({
 	email,
 	mailboxId,
+	translation,
+	allowRemoteImages,
+	onShowRemoteImages,
+	onTrustSender,
 	onPreviewImage,
 }: SingleMessageViewProps) {
+	const showRemoteImageNotice = hasRemoteImages(email.body) && !allowRemoteImages;
+
 	return (
 		<div className="flex h-full flex-col">
 			<div className="border-b border-border px-4 py-4 md:px-6">
@@ -39,8 +51,18 @@ export default function SingleMessageView({
 				</div>
 			</div>
 
+			{showRemoteImageNotice && (
+				<RemoteImageNotice
+					sender={email.sender}
+					onShowOnce={onShowRemoteImages}
+					onTrustSender={onTrustSender}
+					className="shrink-0 border-b border-border px-4 py-3 md:px-6"
+				/>
+			)}
+
 			<div className="min-h-0 flex-1">
 				<EmailIframe
+					allowRemoteImages={allowRemoteImages}
 					body={rewriteInlineImages(
 						email.body || "",
 						mailboxId || "",
@@ -49,6 +71,11 @@ export default function SingleMessageView({
 					)}
 				/>
 			</div>
+
+			<TranslationBlock
+				translation={translation}
+				className="shrink-0 border-t border-border px-4 py-3 md:px-6"
+			/>
 
 			<EmailAttachmentList
 				mailboxId={mailboxId}
