@@ -6,4 +6,8 @@ export interface Env extends Cloudflare.Env {
 	POLICY_AUD: string;
 	TEAM_DOMAIN: string;
 	RESEND_API_KEY: string;
+	// Optional Telegram notifications for inbound email. When both are set,
+	// each received email is pushed to this chat. Leave unset to disable.
+	TELEGRAM_BOT_TOKEN?: string;
+	TELEGRAM_CHAT_ID?: string;
 }

@@ -74,6 +74,7 @@ workers/                     后端（Cloudflare Worker）
     ├── email-helpers.ts     线程头、引用块、HTML/纯文本互转、getMailboxStub、listMailboxes
     ├── mailbox.ts           requireMailbox 中间件（校验邮箱存在并注入 stub 到 Hono context）
     ├── attachments.ts       附件存 R2
+    ├── telegram.ts          收信时推送 Telegram 通知（仅在配置 secret 时生效）
     └── schemas.ts           Zod schema + EmailFull/EmailMetadata 类型
 
 app/                         前端（React Router v7 SPA + SSR）

@@ -17,6 +17,7 @@ import {
 	listMailboxes,
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
+import { notifyTelegram } from "./lib/telegram";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
@@ -622,6 +623,18 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		in_reply_to: inReplyTo, email_references: emailReferences.length > 0 ? JSON.stringify(emailReferences) : null,
 		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsedEmail.headers),
 	}, attachmentData);
+
+	// Push a Telegram notification (no-op unless configured). Best-effort:
+	// runs after the email is already stored and never blocks reception.
+	ctx.waitUntil(
+		notifyTelegram(env, {
+			mailboxId,
+			sender: (parsedEmail.from?.address || "").toLowerCase(),
+			subject: parsedEmail.subject || "",
+			body: parsedEmail.html || parsedEmail.text || "",
+			attachmentCount: attachmentData.length,
+		}).catch((e) => console.error("Telegram notify failed:", (e as Error).message)),
+	);
 
 	// Auto-draft an AI reply, unless disabled in the mailbox settings.
 	// Absent/true => enabled (preserves existing behavior); only an explicit

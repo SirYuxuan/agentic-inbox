@@ -5,3 +5,9 @@ TEAM_DOMAIN=https://your-team.cloudflareaccess.com
 # Resend API key for sending email. Create one at https://resend.com/api-keys
 # and verify your sending domain (the same domain you use for DOMAINS).
 RESEND_API_KEY=re_your_resend_api_key
+
+# Optional: push a Telegram message for each received email.
+# Create a bot via @BotFather to get the token, and get your chat id from
+# @userinfobot. Leave both unset to disable Telegram notifications.
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
