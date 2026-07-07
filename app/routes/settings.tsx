@@ -21,6 +21,9 @@ import api from "~/services/api";
 // The authoritative default prompt lives in workers/agent/index.ts (DEFAULT_SYSTEM_PROMPT).
 const PROMPT_PLACEHOLDER = `你是一个帮助管理此收件箱的邮件助手。你会阅读邮件、起草回复，并帮助整理会话。\n\n像真人一样写作。简短、直接、自然流畅。仅使用纯文本。\n\n（留空则使用内置的完整默认提示词）`;
 
+// How many trusted image senders to show per page.
+const TRUSTED_PAGE_SIZE = 8;
+
 export default function SettingsRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const toastManager = useKumoToastManager();
@@ -42,7 +45,21 @@ export default function SettingsRoute() {
 	const [agentPrompt, setAgentPrompt] = useState("");
 	const [autoDraft, setAutoDraft] = useState(true);
 	const [trustedImageSenders, setTrustedImageSenders] = useState<string[]>([]);
+	const [trustedPage, setTrustedPage] = useState(0);
 	const [isSaving, setIsSaving] = useState(false);
+
+	// Client-side pagination for the trusted image senders list. `trustedPage`
+	// is clamped on read so removing the last entry on a page falls back to a
+	// valid page without needing an extra effect.
+	const trustedPageCount = Math.max(
+		1,
+		Math.ceil(trustedImageSenders.length / TRUSTED_PAGE_SIZE),
+	);
+	const currentTrustedPage = Math.min(trustedPage, trustedPageCount - 1);
+	const visibleTrustedSenders = trustedImageSenders.slice(
+		currentTrustedPage * TRUSTED_PAGE_SIZE,
+		currentTrustedPage * TRUSTED_PAGE_SIZE + TRUSTED_PAGE_SIZE,
+	);
 
 	useEffect(() => {
 		if (mailbox) {
@@ -152,27 +169,55 @@ export default function SettingsRoute() {
 							已信任图片发件人
 						</div>
 						{trustedImageSenders.length > 0 ? (
-							<div className="space-y-2">
-								{trustedImageSenders.map((sender) => (
-									<div
-										key={sender}
-										className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
-									>
-										<span className="min-w-0 truncate text-sm text-foreground">
-											{sender}
-										</span>
-										<Button
-											variant="ghost"
-											size="icon-sm"
-											onClick={() => removeTrustedSender(sender)}
-											aria-label={`移除 ${sender}`}
-											className="shrink-0 text-muted-foreground"
+							<>
+								<div className="space-y-2">
+									{visibleTrustedSenders.map((sender) => (
+										<div
+											key={sender}
+											className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
 										>
-											<XIcon size={16} />
-										</Button>
+											<span className="min-w-0 truncate text-sm text-foreground">
+												{sender}
+											</span>
+											<Button
+												variant="ghost"
+												size="icon-sm"
+												onClick={() => removeTrustedSender(sender)}
+												aria-label={`移除 ${sender}`}
+												className="shrink-0 text-muted-foreground"
+											>
+												<XIcon size={16} />
+											</Button>
+										</div>
+									))}
+								</div>
+								{trustedPageCount > 1 && (
+									<div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
+										<span>
+											第 {currentTrustedPage + 1} / {trustedPageCount} 页 · 共{" "}
+											{trustedImageSenders.length} 个
+										</span>
+										<div className="flex items-center gap-2">
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={currentTrustedPage <= 0}
+												onClick={() => setTrustedPage(currentTrustedPage - 1)}
+											>
+												上一页
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={currentTrustedPage >= trustedPageCount - 1}
+												onClick={() => setTrustedPage(currentTrustedPage + 1)}
+											>
+												下一页
+											</Button>
+										</div>
 									</div>
-								))}
-							</div>
+								)}
+							</>
 						) : (
 							<div className="text-sm text-muted-foreground">暂无信任的发件人</div>
 						)}
