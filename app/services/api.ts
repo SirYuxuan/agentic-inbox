@@ -5,6 +5,7 @@
 import type { Contact, Email, EmailTranslation, Folder, Mailbox } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+const TRANSLATION_TIMEOUT_MS = 120_000;
 
 export class ApiError extends Error {
 	status: number;
@@ -21,9 +22,13 @@ export class ApiError extends Error {
 async function request<T>(
 	url: string,
 	options: RequestInit = {},
+	timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
 	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+	const timeout = setTimeout(
+		() => controller.abort(new DOMException("请求超时，请稍后重试", "TimeoutError")),
+		timeoutMs,
+	);
 
 	// Combine caller signal (e.g. TanStack Query abort) with our timeout signal
 	const signal = options.signal
@@ -66,12 +71,16 @@ function get<T>(url: string, opts?: { params?: Record<string, string>; responseT
 	});
 }
 
-function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal }) {
-	return request<T>(url, {
-		method: "POST",
-		signal: opts?.signal,
-		body: body != null ? JSON.stringify(body) : undefined,
-	});
+function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal; timeoutMs?: number }) {
+	return request<T>(
+		url,
+		{
+			method: "POST",
+			signal: opts?.signal,
+			body: body != null ? JSON.stringify(body) : undefined,
+		},
+		opts?.timeoutMs,
+	);
 }
 
 function put<T>(url: string, body?: unknown) {
@@ -134,7 +143,11 @@ const api = {
 	moveEmail: (mailboxId: string, id: string, folderId: string) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/move`, { folderId }),
 	translateEmail: (mailboxId: string, id: string) =>
-		post<EmailTranslation>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/translate`),
+		post<EmailTranslation>(
+			`/api/v1/mailboxes/${mailboxId}/emails/${id}/translate`,
+			undefined,
+			{ timeoutMs: TRANSLATION_TIMEOUT_MS },
+		),
 	getThread: (mailboxId: string, threadId: string, opts?: { signal?: AbortSignal }) =>
 		get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, { signal: opts?.signal }),
 	markThreadRead: (mailboxId: string, threadId: string) =>

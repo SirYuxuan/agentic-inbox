@@ -212,7 +212,6 @@ async function translateText(
 	if (!trimmed) return "";
 
 	const response = (await ai.run(
-		// @ts-expect-error — model string not in generated union
 		TRANSLATION_MODEL,
 		{
 			text: trimmed,
@@ -226,42 +225,39 @@ async function translateText(
 
 function chunkText(text: string, maxChars = 2500): string[] {
 	const chunks: string[] = [];
-	const paragraphs = text.split(/\n{2,}/);
-	let current = "";
-
-	for (const paragraph of paragraphs) {
-		const next = current ? `${current}\n\n${paragraph}` : paragraph;
-		if (next.length <= maxChars) {
-			current = next;
-			continue;
-		}
-
-		if (current) chunks.push(current);
-
-		if (paragraph.length <= maxChars) {
-			current = paragraph;
-			continue;
-		}
-
-		for (let i = 0; i < paragraph.length; i += maxChars) {
-			chunks.push(paragraph.slice(i, i + maxChars));
-		}
-		current = "";
+	for (let index = 0; index < text.length; index += maxChars) {
+		chunks.push(text.slice(index, index + maxChars));
 	}
-
-	if (current) chunks.push(current);
 	return chunks;
 }
 
 async function translateLongText(ai: Ai, text: string): Promise<string> {
-	const chunks = chunkText(text);
 	const translated: string[] = [];
-
-	for (const chunk of chunks) {
+	for (const chunk of chunkText(text)) {
 		translated.push(await translateText(ai, chunk));
 	}
+	return translated.join("").trim();
+}
 
-	return translated.join("\n\n").trim();
+async function mapWithConcurrency<T, R>(
+	items: T[],
+	concurrency: number,
+	mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+	const results = new Array<R>(items.length);
+	let nextIndex = 0;
+
+	async function worker() {
+		while (nextIndex < items.length) {
+			const index = nextIndex++;
+			results[index] = await mapper(items[index]);
+		}
+	}
+
+	await Promise.all(
+		Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+	);
+	return results;
 }
 
 function splitTextWhitespace(text: string) {
@@ -275,10 +271,16 @@ async function translateHtmlPreservingMarkup(ai: Ai, html: string): Promise<stri
 	if (!html.trim()) return "";
 
 	const tokens = html.split(/(<[^>]+>)/g);
-	const translated: string[] = [];
+	const textNodes: Array<{
+		index: number;
+		leading: string;
+		core: string;
+		trailing: string;
+	}> = [];
 	let skippedTag: "script" | "style" | null = null;
 
-	for (const token of tokens) {
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index];
 		if (!token) continue;
 
 		if (token.startsWith("<")) {
@@ -288,26 +290,34 @@ async function translateHtmlPreservingMarkup(ai: Ai, html: string): Promise<stri
 			else if (/^<\/script\b/.test(lower) && skippedTag === "script") skippedTag = null;
 			else if (/^<\/style\b/.test(lower) && skippedTag === "style") skippedTag = null;
 
-			translated.push(token);
 			continue;
 		}
 
-		if (skippedTag || !/\S/.test(token)) {
-			translated.push(token);
-			continue;
-		}
+		if (skippedTag || !/\S/.test(token)) continue;
 
 		const { leading, core, trailing } = splitTextWhitespace(token);
-		if (!core) {
-			translated.push(token);
-			continue;
-		}
-
-		const translatedCore = await translateText(ai, core);
-		translated.push(`${leading}${escapeHtml(translatedCore || core)}${trailing}`);
+		if (!core || !/[\p{L}\p{N}]/u.test(core.replace(/&[a-z0-9#]+;/gi, " "))) continue;
+		textNodes.push({ index, leading, core, trailing });
 	}
 
-	return translated.join("");
+	const translatedNodes = await mapWithConcurrency(textNodes, 6, async (node) => {
+		try {
+			return await translateText(ai, node.core);
+		} catch (error) {
+			console.error("Email HTML text node translation failed:", (error as Error).message);
+			return "";
+		}
+	});
+
+	for (let index = 0; index < textNodes.length; index++) {
+		const node = textNodes[index];
+		const translated = translatedNodes[index];
+		if (translated) {
+			tokens[node.index] = `${node.leading}${escapeHtml(translated)}${node.trailing}`;
+		}
+	}
+
+	return tokens.join("");
 }
 
 export async function translateEmailContent(
@@ -315,18 +325,30 @@ export async function translateEmailContent(
 	email: { subject?: string | null; body?: string | null },
 ): Promise<TranslationResult> {
 	const subject = email.subject || "";
-	const bodyText = email.body ? stripHtmlToText(email.body) : "";
 	const bodyHtml = email.body || "";
+	const looksLikeHtml = /<[a-zA-Z!/][^>]*>/.test(bodyHtml);
 
-	const [translatedSubject, translatedBody, translatedBodyHtml] = await Promise.all([
+	if (!looksLikeHtml) {
+		const [translatedSubject, translatedBody] = await Promise.all([
+			translateText(ai, subject),
+			translateLongText(ai, bodyHtml),
+		]);
+		return {
+			subject: translatedSubject || subject,
+			body: translatedBody || bodyHtml,
+			bodyHtml: textToHtml(translatedBody || bodyHtml),
+		};
+	}
+
+	const [translatedSubject, translatedBodyHtml] = await Promise.all([
 		translateText(ai, subject),
-		translateLongText(ai, bodyText),
 		translateHtmlPreservingMarkup(ai, bodyHtml),
 	]);
+	const translatedBody = stripHtmlToText(translatedBodyHtml);
 
 	return {
 		subject: translatedSubject || subject,
-		body: translatedBody || bodyText,
+		body: translatedBody || stripHtmlToText(bodyHtml),
 		bodyHtml: translatedBodyHtml || bodyHtml,
 	};
 }
