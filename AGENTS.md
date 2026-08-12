@@ -8,7 +8,7 @@
 
 ## 1. 一句话概述
 
-**Agentic Inbox** 是一个完全运行在 Cloudflare Workers 上的自托管邮件客户端，内置 AI 邮件 Agent。收信走 Cloudflare Email Routing，发信走 Resend，每个邮箱隔离在独立的 Durable Object（内含 SQLite），附件存 R2，AI 用 Workers AI（`@cf/moonshotai/kimi-k2.5`）。
+**Agentic Inbox** 是一个完全运行在 Cloudflare Workers 上的自托管邮件客户端，内置 AI 邮件 Agent。收信走 Cloudflare Email Routing，发信走 Resend，每个邮箱隔离在独立的 Durable Object（内含 SQLite），附件存 R2，AI 用 Workers AI（`@cf/mistralai/mistral-small-3.1-24b-instruct`）。
 
 技术栈见 [README.md](README.md#stack)。核心库版本：React 19 / React Router v7 / Hono 4 / AI SDK v6 / `agents` 0.7 / `@cloudflare/ai-chat` / drizzle-orm。
 
@@ -126,7 +126,7 @@ worker-configuration.d.ts    wrangler 生成的类型（勿手改，用 npm run 
 > **改工具的规矩**：新增/修改工具行为 → 改 [workers/lib/tools.ts](workers/lib/tools.ts)，然后在 agent 和/或 mcp 里接线。不要在 agent/mcp 里各写一份逻辑。
 
 ### 自动起草流程（onNewEmail）
-1. 入站邮件存好后，`receiveEmail`（[workers/index.ts](workers/index.ts)）在 `ctx.waitUntil` 里 `fetch` `EmailAgent` 的 `/onNewEmail`（除非该邮箱 `autoDraftEnabled === false`）。
+1. 入站邮件存好后，仅当该邮箱显式设置 `autoDraftEnabled === true` 时，`receiveEmail`（[workers/index.ts](workers/index.ts)）才会在 `ctx.waitUntil` 里 `fetch` `EmailAgent` 的 `/onNewEmail`；缺省为关闭。
 2. `EmailAgent.onRequest`（[workers/agent/index.ts](workers/agent/index.ts)）读取邮件与线程上下文 → 先跑 `isPromptInjection`（[workers/lib/ai.ts](workers/lib/ai.ts)）→ 用 `streamText` 生成草稿 → `verifyDraft` 清洗 → 存为 draft。
 3. 用户在 AI 面板聊天走 `onChatMessage`（WebSocket，经 `/agents/*`）。
 

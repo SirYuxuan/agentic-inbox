@@ -4,6 +4,9 @@
 
 /** Centralised query key factories for cache invalidation. */
 export const queryKeys = {
+	auth: {
+		session: ["auth", "session"] as const,
+	},
 	mailboxes: {
 		all: ["mailboxes"] as const,
 		detail: (id: string) => ["mailboxes", id] as const,

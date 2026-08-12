@@ -12,6 +12,13 @@
 import { escapeHtml, stripHtmlToText, textToHtml } from "./email-helpers";
 
 const TRANSLATION_MODEL = "@cf/meta/m2m100-1.2b";
+export const EMAIL_AGENT_MODEL = "@cf/mistralai/mistral-small-3.1-24b-instruct";
+export const EMAIL_CHAT_MODEL = EMAIL_AGENT_MODEL;
+const TRANSLATION_FALLBACK_MODEL = EMAIL_CHAT_MODEL;
+
+type TranslationSession = {
+	useFallback: boolean;
+};
 
 // ── Prompt Injection Scanner ───────────────────────────────────────
 
@@ -205,22 +212,53 @@ interface TranslationResult {
 async function translateText(
 	ai: Ai,
 	text: string,
+	session: TranslationSession,
 	sourceLang = "english",
 	targetLang = "chinese",
 ): Promise<string> {
 	const trimmed = text.trim();
 	if (!trimmed) return "";
 
-	const response = (await ai.run(
-		TRANSLATION_MODEL,
-		{
-			text: trimmed,
-			source_lang: sourceLang,
-			target_lang: targetLang,
-		},
-	)) as { translated_text?: string; response?: string };
+	if (!session.useFallback) {
+		try {
+			const response = (await ai.run(
+				TRANSLATION_MODEL,
+				{
+					text: trimmed,
+					source_lang: sourceLang,
+					target_lang: targetLang,
+				},
+			)) as { translated_text?: string; response?: string };
+			const translated = (response.translated_text || response.response || "").trim();
+			if (translated) return translated;
+			console.warn("Primary translation model returned an empty result; using fallback model");
+		} catch (error) {
+			console.warn(
+				"Primary translation model failed; using fallback model:",
+				(error as Error).message,
+			);
+		}
+		session.useFallback = true;
+	}
 
-	return (response.translated_text || response.response || "").trim();
+	const fallback = (await ai.run(
+		TRANSLATION_FALLBACK_MODEL,
+		{
+			messages: [
+				{
+					role: "system",
+					content: "Translate the user's text from English to Simplified Chinese. Preserve names, URLs, numbers, and meaning exactly. Return only the translation, without commentary or quotation marks.",
+				},
+				{ role: "user", content: trimmed },
+			],
+			max_tokens: Math.min(4096, Math.max(256, Math.ceil(trimmed.length * 1.5))),
+			temperature: 0,
+		},
+	)) as { response?: string };
+
+	const translated = fallback.response?.trim() ?? "";
+	if (!translated) throw new Error("Fallback translation model returned an empty result");
+	return translated;
 }
 
 function chunkText(text: string, maxChars = 2500): string[] {
@@ -231,10 +269,14 @@ function chunkText(text: string, maxChars = 2500): string[] {
 	return chunks;
 }
 
-async function translateLongText(ai: Ai, text: string): Promise<string> {
+async function translateLongText(
+	ai: Ai,
+	text: string,
+	session: TranslationSession,
+): Promise<string> {
 	const translated: string[] = [];
 	for (const chunk of chunkText(text)) {
-		translated.push(await translateText(ai, chunk));
+		translated.push(await translateText(ai, chunk, session));
 	}
 	return translated.join("").trim();
 }
@@ -267,7 +309,11 @@ function splitTextWhitespace(text: string) {
 	return { leading, core, trailing };
 }
 
-async function translateHtmlPreservingMarkup(ai: Ai, html: string): Promise<string> {
+async function translateHtmlPreservingMarkup(
+	ai: Ai,
+	html: string,
+	session: TranslationSession,
+): Promise<string> {
 	if (!html.trim()) return "";
 
 	const tokens = html.split(/(<[^>]+>)/g);
@@ -300,9 +346,9 @@ async function translateHtmlPreservingMarkup(ai: Ai, html: string): Promise<stri
 		textNodes.push({ index, leading, core, trailing });
 	}
 
-	const translatedNodes = await mapWithConcurrency(textNodes, 6, async (node) => {
+	const translatedNodes = await mapWithConcurrency(textNodes, 3, async (node) => {
 		try {
-			return await translateText(ai, node.core);
+			return await translateText(ai, node.core, session);
 		} catch (error) {
 			console.error("Email HTML text node translation failed:", (error as Error).message);
 			return "";
@@ -327,12 +373,11 @@ export async function translateEmailContent(
 	const subject = email.subject || "";
 	const bodyHtml = email.body || "";
 	const looksLikeHtml = /<[a-zA-Z!/][^>]*>/.test(bodyHtml);
+	const session: TranslationSession = { useFallback: false };
+	const translatedSubject = await translateText(ai, subject, session);
 
 	if (!looksLikeHtml) {
-		const [translatedSubject, translatedBody] = await Promise.all([
-			translateText(ai, subject),
-			translateLongText(ai, bodyHtml),
-		]);
+		const translatedBody = await translateLongText(ai, bodyHtml, session);
 		return {
 			subject: translatedSubject || subject,
 			body: translatedBody || bodyHtml,
@@ -340,10 +385,7 @@ export async function translateEmailContent(
 		};
 	}
 
-	const [translatedSubject, translatedBodyHtml] = await Promise.all([
-		translateText(ai, subject),
-		translateHtmlPreservingMarkup(ai, bodyHtml),
-	]);
+	const translatedBodyHtml = await translateHtmlPreservingMarkup(ai, bodyHtml, session);
 	const translatedBody = stripHtmlToText(translatedBodyHtml);
 
 	return {

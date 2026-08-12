@@ -9,6 +9,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Tooltip } from "~/components/ui/tooltip";
 import { useUIStore } from "~/hooks/useUIStore";
+import AccountMenu from "~/components/AccountMenu";
 
 export default function Header() {
 	const [searchQuery, setSearchQuery] = useState("");
@@ -137,6 +138,8 @@ export default function Header() {
 						<GearSixIcon size={19} />
 					</Button>
 				</Tooltip>
+				<div className="mx-1 h-5 w-px bg-border" />
+				<AccountMenu />
 			</div>
 		</header>
 	);

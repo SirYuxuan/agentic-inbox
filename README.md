@@ -12,33 +12,46 @@ An **AI-powered Email Agent** can read your inbox, search conversations, and dra
 
 Read the blog post to learn more about Cloudflare Email Service and how to use it with the Agents SDK, MCP, and from the Wrangler CLI: [Email for Agents](https://blog.cloudflare.com/email-for-agents/).
 
-## How to setup
+## How to set up
 
-**Important**: Clicking the 'Deploy to Cloudflare' button is only one part of the setup. You must follow the **After deploying** steps as well. For a full step-by-step guide with screenshots, refer to this comment: 
-https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
+1. Create the authentication database:
 
-### To set up
+   ```bash
+   npx wrangler d1 create agentic-inbox-auth
+   ```
 
-1. Deploy to Cloudflare. The deploy flow will automatically provision R2, Durable Objects, and Workers AI. You'll be prompted for **DOMAINS**, which is the domain (yourdomain.com) you want to receive emails for (email@yourdomain.com).
+   Replace the placeholder `database_id` in `wrangler.jsonc` with the returned ID.
 
-     [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agentic-inbox)
+2. Create the R2 bucket if it does not already exist:
 
-2. **Configure Cloudflare Access** -- Enable [one-click Cloudflare Access](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) on your Worker under Settings > Domains & Routes. The modal will show your `POLICY_AUD` and `TEAM_DOMAIN` values. `TEAM_DOMAIN` can be either your Access team URL or the full `.../cdn-cgi/access/certs` URL. **You must set these as secrets for your Worker.**
-3. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
-4. **Set up Resend for sending** -- Outbound email is sent through [Resend](https://resend.com). Create an account, [verify your sending domain](https://resend.com/docs/dashboard/domains/introduction) (use the same domain as `DOMAINS`), and create an [API key](https://resend.com/api-keys). Set it as a Worker secret: `wrangler secret put RESEND_API_KEY`
-5. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
+   ```bash
+   npx wrangler r2 bucket create agentic-inbox
+   ```
 
-### Troubleshooting Access
+3. Apply the authentication migration, then deploy:
 
-1. If you see `Invalid or expired Access token`, that usually means `POLICY_AUD` or `TEAM_DOMAIN` secrets are incorrect.
-   * Resolution: [turn Access off and back on for the Worker to get the Access modal again](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/), then reset your Worker secrets to the latest `POLICY_AUD` and `TEAM_DOMAIN` values shown there.
-2. If you see `Cloudflare Access must be configured in production`, this application is intentionally enforcing Cloudflare Access so your inbox is not exposed to anyone on the internet.
-   * Resolution: enable Access using [one-click Cloudflare Access for Workers](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/), then set the `POLICY_AUD` and `TEAM_DOMAIN` Worker secrets from the modal values.
+   ```bash
+   npm run db:migrate:remote
+   npm run deploy
+   ```
+
+4. Configure the fixed registration key and Resend API key as Worker secrets:
+
+   ```bash
+   npx wrangler secret put REGISTRATION_KEY
+   npx wrangler secret put RESEND_API_KEY
+   ```
+
+5. In Cloudflare Email Routing, create a catch-all rule for `oofo.cc` that forwards to this Worker.
+
+6. Sign in with the seeded `yuxuan` administrator account. On the first authenticated request, every pre-existing R2 mailbox is claimed by that account without moving its Durable Object or email data.
 
 ## Features
 
 - **Full email client** — Receive via Cloudflare Email Routing and send via Resend, with a rich text composer, reply/forward threading, folder organization, search, and attachments
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
+- **Account isolation** — Password sessions, fixed-key registration, mailbox ownership, address books, preferences, and ordering are isolated per account
+- **Prefix namespaces** — Normal accounts create `prefix.custom@oofo.cc`; the administrator can create any available dot-separated local part
 - **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and sending
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
@@ -47,24 +60,28 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 - **Frontend:** React 19, React Router v7, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
 - **Backend:** Hono, Cloudflare Workers, Durable Objects (SQLite), R2, Email Routing (receive), Resend (send)
-- **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v6, Workers AI (`@cf/moonshotai/kimi-k2.5`), `react-markdown` + `remark-gfm`
-- **Auth:** Cloudflare Access JWT validation (required outside local development)
+- **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v6, Workers AI (`@cf/mistralai/mistral-small-3.1-24b-instruct`), `react-markdown` + `remark-gfm`
+- **Auth:** D1 users and opaque sessions, PBKDF2-SHA256 password hashes, HttpOnly same-origin cookies
 
 ## Getting Started
 
 ```bash
 npm install
+cp .dev.vars.example .dev.vars
+npm run db:migrate:local
 npm run dev
 ```
 
 ### Configuration
 
-1. Set your domain in `wrangler.jsonc`
-2. Create an R2 bucket named `agentic-inbox`: `wrangler r2 bucket create agentic-inbox`
+1. Set `REGISTRATION_KEY` and `RESEND_API_KEY` in `.dev.vars`.
+2. Keep the mailbox domain as `oofo.cc` in `wrangler.jsonc`.
+3. Create the D1 database and R2 bucket described above before remote deployment.
 
 ### Deploy
 
 ```bash
+npm run db:migrate:remote
 npm run deploy
 ```
 
@@ -74,9 +91,10 @@ npm run deploy
 - [Email Routing](https://developers.cloudflare.com/email-routing/) enabled for receiving
 - [Resend](https://resend.com) account with a verified sending domain and an API key (set as the `RESEND_API_KEY` secret)
 - [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled (for the agent)
-- [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) configured for deployed/shared environments (required in production)
+- D1 database bound as `AUTH_DB`, with all files in `migrations/` applied
+- A fixed `REGISTRATION_KEY` stored as a Worker secret
 
-Any user who passes the shared Cloudflare Access policy can access all mailboxes in this app by design. This includes the MCP server at `/mcp` -- external AI tools (Claude Code, Cursor, etc.) connected via MCP can operate on any mailbox by passing a `mailboxId` parameter. There is no per-mailbox authorization; the Cloudflare Access policy is the single trust boundary.
+REST and Agent requests are restricted to mailboxes actively owned by the signed-in account. MCP is administrator-only and applies the same active ownership check to every mailbox tool.
 
 ## Architecture
 

@@ -4,16 +4,19 @@
 
 /**
  * Hono middleware to handle repetitive Mailbox Durable Object instantiation.
- * Checks if the mailbox exists in R2, then instantiates the DO stub
- * and attaches it to the Hono context (`c.var.mailboxStub`).
+ * Checks the authenticated user's active D1 ownership claim and the R2
+ * settings object, then attaches the canonical ID and DO stub to the context.
  */
 import { createMiddleware } from "hono/factory";
 import type { MailboxDO } from "../durableObject";
 import type { Env } from "../types";
+import type { AuthUser } from "./auth";
 
 export type MailboxContext = {
 	Bindings: Env;
 	Variables: {
+		authUser: AuthUser;
+		mailboxId: string;
 		mailboxStub: DurableObjectStub<MailboxDO>;
 	};
 };
@@ -25,7 +28,26 @@ export const requireMailbox = createMiddleware<MailboxContext>(async (c, next) =
 		await next();
 		return;
 	}
-	const mailboxId = decodeURIComponent(rawId);
+	let mailboxId: string;
+	try {
+		mailboxId = decodeURIComponent(rawId).trim().toLowerCase();
+	} catch {
+		return c.json({ error: "Invalid mailbox ID" }, 400);
+	}
+
+	const user = c.var.authUser;
+	if (!user) return c.json({ error: "Authentication required" }, 401);
+
+	const claim = await c.env.AUTH_DB.prepare(`
+		SELECT mailbox_id
+		FROM mailbox_claims
+		WHERE mailbox_id = ? COLLATE NOCASE
+			AND user_id = ?
+			AND status = 'active'
+		LIMIT 1
+	`).bind(mailboxId, user.id).first<{ mailbox_id: string }>();
+	if (!claim) return c.json({ error: "Not found" }, 404);
+	mailboxId = claim.mailbox_id.toLowerCase();
 
 	// Verify mailbox exists
 	const key = `mailboxes/${mailboxId}.json`;
@@ -39,7 +61,8 @@ export const requireMailbox = createMiddleware<MailboxContext>(async (c, next) =
 	const id = ns.idFromName(mailboxId);
 	const stub = ns.get(id);
 
+	c.set("mailboxId", mailboxId);
 	c.set("mailboxStub", stub);
-	
+
 	await next();
 });

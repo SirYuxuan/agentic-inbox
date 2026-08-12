@@ -33,7 +33,6 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Tooltip } from "~/components/ui/tooltip";
 import {
-	readMailboxOrder,
 	sortMailboxesByOrder,
 } from "~/lib/mailbox-order";
 import { cn } from "~/lib/utils";
@@ -112,11 +111,7 @@ export default function Sidebar() {
 
 	useEffect(() => {
 		if (!mailboxOrderData) return;
-		setMailboxOrder(
-			mailboxOrderData.order.length > 0
-				? mailboxOrderData.order
-				: readMailboxOrder(),
-		);
+		setMailboxOrder(mailboxOrderData.order);
 	}, [mailboxOrderData]);
 
 	useEffect(() => {

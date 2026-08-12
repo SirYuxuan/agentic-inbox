@@ -2,10 +2,9 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { PlugsIcon, RobotIcon } from "@phosphor-icons/react";
+import { RobotIcon } from "@phosphor-icons/react";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import MCPPanel from "./MCPPanel";
 
 function LazyAgentPanel() {
 	const [AgentChat, setAgentChat] = useState<React.ComponentType | null>(
@@ -41,44 +40,21 @@ function LazyAgentPanel() {
 }
 
 export default function AgentSidebar() {
-	const [activeTab, setActiveTab] = useState<"agent" | "mcp">("agent");
-
 	return (
 		<div className="flex flex-col h-full">
-			{/* Tab bar */}
+			{/* MCP is intentionally not advertised here until it has a dedicated
+			    non-browser credential flow. */}
 			<div className="flex items-center border-b border-border shrink-0">
-				<button
-					type="button"
-					onClick={() => setActiveTab("agent")}
-					className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 bg-transparent cursor-pointer ${
-						activeTab === "agent"
-							? "border-foreground text-foreground"
-							: "border-transparent text-muted-foreground hover:text-foreground"
-					}`}
-				>
-					<RobotIcon size={14} weight={activeTab === "agent" ? "fill" : "regular"} />
+				<div className="flex items-center gap-1.5 border-b-2 border-foreground px-4 py-2.5 text-sm font-medium text-foreground">
+					<RobotIcon size={14} weight="fill" />
 					助手
-				</button>
-				<button
-					type="button"
-					onClick={() => setActiveTab("mcp")}
-					className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 bg-transparent cursor-pointer ${
-						activeTab === "mcp"
-							? "border-foreground text-foreground"
-							: "border-transparent text-muted-foreground hover:text-foreground"
-					}`}
-				>
-					<PlugsIcon size={14} weight={activeTab === "mcp" ? "fill" : "regular"} />
-					MCP
-				</button>
+				</div>
 			</div>
 
-			{/* Tab content — keep agent mounted so chat isn't lost */}
 			<div className="flex-1 min-h-0 overflow-hidden">
-				<div className={activeTab === "agent" ? "h-full" : "hidden"}>
+				<div className="h-full">
 					<LazyAgentPanel />
 				</div>
-				{activeTab === "mcp" && <MCPPanel />}
 			</div>
 		</div>
 	);

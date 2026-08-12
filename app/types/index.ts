@@ -14,9 +14,9 @@ export interface MailboxSettings {
 	signature?: SignatureSettings;
 	autoReply?: { enabled: boolean; subject: string; message: string };
 	agentSystemPrompt?: string;
-	/** When false, skip auto-drafting an AI reply on new inbound email. Defaults to enabled. */
+	/** Opt-in AI reply drafting for new inbound email. Defaults to disabled. */
 	autoDraftEnabled?: boolean;
-	/** @deprecated Trusted image senders are stored globally. Kept for legacy mailbox settings. */
+	/** @deprecated Trusted image senders are stored per account. Kept for legacy mailbox settings. */
 	trustedImageSenders?: string[];
 }
 
@@ -27,7 +27,26 @@ export interface Mailbox {
 	settings?: MailboxSettings;
 }
 
-/** A global address-book contact, shared across all mailboxes. */
+export interface CreateMailboxInput {
+	name: string;
+	localPart?: string;
+	customPart?: string;
+	settings?: Partial<MailboxSettings>;
+}
+
+export interface AuthUser {
+	id: string;
+	username: string;
+	mailboxPrefix: string;
+	role: "admin" | "user";
+	createdAt: string;
+}
+
+export interface AuthSession {
+	user: AuthUser;
+}
+
+/** An account-level address-book contact, shared across the account's mailboxes. */
 export interface Contact {
 	id: string;
 	name: string;

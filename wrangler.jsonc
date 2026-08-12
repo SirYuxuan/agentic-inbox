@@ -10,12 +10,16 @@
 		"nodejs_compat"
 	],
 	"vars": {
-		// Production deploys must also define POLICY_AUD and TEAM_DOMAIN.
-		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
-		// The worker now fails closed outside local development if Access is not configured.
-		"DOMAINS": "oofo.cc",
-		"EMAIL_ADDRESSES": []
+		"DOMAINS": "oofo.cc"
 	},
+	"d1_databases": [
+		{
+			"binding": "AUTH_DB",
+			"database_name": "agentic-inbox-auth",
+			"database_id": "94fe4b94-d8be-4da5-a0ff-e711eab983e6",
+			"migrations_dir": "migrations"
+		}
+	],
 	"r2_buckets": [
 		{
 			"binding": "BUCKET",

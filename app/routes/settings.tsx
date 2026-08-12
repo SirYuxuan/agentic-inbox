@@ -43,7 +43,7 @@ export default function SettingsRoute() {
 
 	const [displayName, setDisplayName] = useState("");
 	const [agentPrompt, setAgentPrompt] = useState("");
-	const [autoDraft, setAutoDraft] = useState(true);
+	const [autoDraft, setAutoDraft] = useState(false);
 	const [trustedImageSenders, setTrustedImageSenders] = useState<string[]>([]);
 	const [trustedPage, setTrustedPage] = useState(0);
 	const [isSaving, setIsSaving] = useState(false);
@@ -65,7 +65,7 @@ export default function SettingsRoute() {
 		if (mailbox) {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
-			setAutoDraft(mailbox.settings?.autoDraftEnabled !== false);
+			setAutoDraft(mailbox.settings?.autoDraftEnabled === true);
 		}
 	}, [mailbox]);
 

@@ -23,6 +23,8 @@
 		"deploy": "npm run build && wrangler deploy",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
+		"db:migrate:local": "wrangler d1 migrations apply AUTH_DB --local",
+		"db:migrate:remote": "wrangler d1 migrations apply AUTH_DB --remote",
 		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
 	},
 	"dependencies": {

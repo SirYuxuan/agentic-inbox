@@ -45,8 +45,17 @@ type RateLimitStub = {
 
 // ── list_mailboxes ─────────────────────────────────────────────────
 
-export async function toolListMailboxes(env: Env) {
-	return listMailboxes(env.BUCKET);
+export async function toolListMailboxes(env: Env, userId: string) {
+	const result = await env.AUTH_DB.prepare(`
+		SELECT mailbox_id
+		FROM mailbox_claims
+		WHERE user_id = ? AND status = 'active'
+		ORDER BY created_at ASC
+	`).bind(userId).all<{ mailbox_id: string }>();
+	return listMailboxes(
+		env.BUCKET,
+		result.results.map((row) => row.mailbox_id.toLowerCase()),
+	);
 }
 
 // ── list_emails ────────────────────────────────────────────────────

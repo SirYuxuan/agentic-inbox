@@ -96,3 +96,15 @@ export const useUIStore = create<UIState>((set, get) => ({
 			composeOptions: { mode: "new", originalEmail: null },
 		}),
 }));
+
+export function resetUIStore() {
+	useUIStore.setState({
+		selectedEmailId: null,
+		isComposing: false,
+		_previousEmailId: null,
+		composeOptions: { mode: "new", originalEmail: null },
+		isComposeModalOpen: false,
+		isSidebarOpen: false,
+		isAgentPanelOpen: true,
+	});
+}

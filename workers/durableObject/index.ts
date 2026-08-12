@@ -109,6 +109,21 @@ export class MailboxDO extends DurableObject<Env> {
 		applyMigrations(this.ctx.storage.sql, mailboxMigrations, this.ctx.storage);
 	}
 
+	/**
+	 * Clear orphaned data left by the pre-auth deletion flow before a
+	 * previously unregistered address is provisioned. System folders and the
+	 * migration ledger remain intact so the object is immediately usable.
+	 */
+	async resetForNewMailbox(): Promise<void> {
+		this.ctx.storage.transactionSync(() => {
+			this.ctx.storage.sql.exec(`
+			DELETE FROM attachments;
+			DELETE FROM emails;
+			DELETE FROM folders WHERE is_deletable = 1;
+			`);
+		});
+	}
+
 	// ── Email CRUD (Drizzle) ───────────────────────────────────────
 
 	async getEmails(options: GetEmailsOptions = {}) {

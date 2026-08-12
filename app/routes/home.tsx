@@ -15,13 +15,15 @@ import {
 	MailOpen,
 	Network,
 	Plus,
+	RefreshCw,
 	Route,
 	ShieldCheck,
 	Trash2,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router";
+import AccountMenu from "~/components/AccountMenu";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
@@ -39,10 +41,10 @@ import { cn } from "~/lib/utils";
 import api from "~/services/api";
 import {
 	getMailboxOrderKey,
-	readMailboxOrder,
 	sortMailboxesByOrder,
 	type MailboxListItem,
 } from "~/lib/mailbox-order";
+import { useAuthSession } from "~/queries/auth";
 import {
 	useCreateMailbox,
 	useDeleteMailbox,
@@ -51,30 +53,6 @@ import {
 import { queryKeys } from "~/queries/keys";
 
 const MAILBOX_PAGE_SIZE = 8;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function parseMailboxEntries(
-	value: string,
-	defaultDomain: string,
-): { email: string; name: string }[] {
-	const entries = value
-		.split(/[\s,，;；]+/)
-		.map((entry) => entry.trim())
-		.filter(Boolean);
-	const seen = new Set<string>();
-
-	return entries.map((entry) => {
-		const email = (entry.includes("@") ? entry : `${entry}@${defaultDomain}`).toLowerCase();
-		if (!EMAIL_RE.test(email)) {
-			throw new Error(`邮箱格式不正确：${entry}`);
-		}
-		if (seen.has(email)) {
-			throw new Error(`邮箱重复：${email}`);
-		}
-		seen.add(email);
-		return { email, name: email.split("@")[0] || email };
-	});
-}
 
 export function meta() {
 	return [{ title: "Agentic Inbox" }];
@@ -82,16 +60,19 @@ export function meta() {
 
 export default function HomeRoute() {
 	const toastManager = useKumoToastManager();
-	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched } = useMailboxes();
+	const mailboxesQuery = useMailboxes();
+	const { data: mailboxes = [] } = mailboxesQuery;
+	const { data: authSession } = useAuthSession();
 	const createMailbox = useCreateMailbox();
 	const deleteMailbox = useDeleteMailbox();
 	const queryClient = useQueryClient();
 
-	const { data: configData } = useQuery({
+	const configQuery = useQuery({
 		queryKey: queryKeys.config,
 		queryFn: () => api.getConfig(),
 		staleTime: Infinity, // config rarely changes
 	});
+	const { data: configData } = configQuery;
 	const { data: unreadCounts = {} } = useQuery({
 		queryKey: ["mailboxes", "unread-counts"],
 		queryFn: () => api.getMailboxUnreadCounts(),
@@ -109,11 +90,11 @@ export default function HomeRoute() {
 	});
 
 	const domains = configData?.domains ?? [];
-	const emailAddresses = configData?.emailAddresses ?? [];
+	const user = authSession?.user;
+	const isAdmin = user?.role === "admin";
 
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [newPrefix, setNewPrefix] = useState("");
-	const [selectedDomain, setSelectedDomain] = useState("");
 	const [newName, setNewName] = useState("");
 	const [isCreating, setIsCreating] = useState(false);
 	const [createError, setCreateError] = useState<string | null>(null);
@@ -128,86 +109,33 @@ export default function HomeRoute() {
 	const [draggedEmail, setDraggedEmail] = useState<string | null>(null);
 	const [dragOverEmail, setDragOverEmail] = useState<string | null>(null);
 
-	const localOrderMigratedRef = useRef(false);
 	useEffect(() => {
 		if (!mailboxOrderData) return;
-		const serverOrder = mailboxOrderData.order;
-		if (serverOrder.length > 0) {
-			setMailboxOrder(serverOrder);
-			return;
-		}
-
-		const localOrder = readMailboxOrder();
-		setMailboxOrder(localOrder);
-		if (localOrder.length > 0 && !localOrderMigratedRef.current) {
-			localOrderMigratedRef.current = true;
-			updateMailboxOrder.mutate(localOrder);
-		}
-	}, [mailboxOrderData]); // eslint-disable-line react-hooks/exhaustive-deps
-
-	// Set default domain when config loads
-	useEffect(() => {
-		if (domains.length > 0 && !selectedDomain) {
-			setSelectedDomain(domains[0]);
-		}
-	}, [domains, selectedDomain]);
-
-	// Auto-create mailboxes from config (run once when both data sources are ready)
-	const autoCreateDone = useRef(false);
-	useEffect(() => {
-		if (autoCreateDone.current) return;
-		if (emailAddresses.length === 0 || !mailboxesFetched) return;
-		const existingEmails = new Set(
-			mailboxes.map((m) => m.email.toLowerCase()),
-		);
-		const toCreate = emailAddresses.filter(
-			(addr) => !existingEmails.has(addr.toLowerCase()),
-		);
-		if (toCreate.length === 0) {
-			autoCreateDone.current = true;
-			return;
-		}
-		autoCreateDone.current = true;
-		let cancelled = false;
-		Promise.all(
-			toCreate.map((addr) => {
-				const localPart = addr.split("@")[0] || addr;
-				return api.createMailbox(addr, localPart).catch(() => {});
-			}),
-		).then(() => { if (!cancelled) refetchMailboxes(); });
-		return () => { cancelled = true; };
-	}, [emailAddresses, mailboxes, refetchMailboxes]);
+		setMailboxOrder(mailboxOrderData.order);
+	}, [mailboxOrderData]);
 
 	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault();
 		setCreateError(null);
-		if (!newPrefix.trim()) {
-			setCreateError("请填写邮箱地址");
+		const requestedPart = newPrefix.trim().toLowerCase();
+		if (!requestedPart) {
+			setCreateError(isAdmin ? "请填写邮箱本地部分" : "请填写自定义部分");
 			return;
 		}
-		let mailboxEntries: { email: string; name: string }[];
-		try {
-			mailboxEntries = parseMailboxEntries(newPrefix, selectedDomain);
-		} catch (err) {
-			setCreateError(err instanceof Error ? err.message : "邮箱格式不正确");
+		if (!user) {
+			setCreateError("登录状态已失效，请重新登录");
 			return;
 		}
 		setIsCreating(true);
 		try {
-			await Promise.all(
-				mailboxEntries.map((entry) =>
-					createMailbox.mutateAsync({
-						email: entry.email,
-						name: mailboxEntries.length === 1 && newName.trim()
-							? newName.trim()
-							: entry.name,
-					}),
-				),
-			);
+			const created = await createMailbox.mutateAsync({
+				name: newName.trim() || requestedPart,
+				...(isAdmin
+					? { localPart: requestedPart }
+					: { customPart: requestedPart }),
+			});
 			toastManager.add({
-				title: mailboxEntries.length === 1
-					? "邮箱创建成功！"
-					: `已创建 ${mailboxEntries.length} 个邮箱`,
+				title: `已创建 ${created.email}`,
 			});
 			setIsCreateOpen(false);
 			setNewPrefix("");
@@ -235,22 +163,7 @@ export default function HomeRoute() {
 		}
 	};
 
-	const isConfigured = emailAddresses.length > 0;
-	const mailboxesByEmail = new Map(
-		mailboxes.map((mailbox) => [mailbox.email.toLowerCase(), mailbox]),
-	);
-	const accounts: MailboxListItem[] = isConfigured
-		? emailAddresses.map((addr) => {
-				const mailbox = mailboxesByEmail.get(addr.toLowerCase());
-				const localPart = addr.split("@")[0] || addr;
-				return {
-					id: mailbox?.id ?? addr,
-					email: addr,
-					name: mailbox?.settings?.fromName || mailbox?.name || localPart,
-					settings: mailbox?.settings,
-				};
-			})
-		: mailboxes;
+	const accounts: MailboxListItem[] = mailboxes;
 	const orderedAccounts = useMemo(
 		() => sortMailboxesByOrder(accounts, mailboxOrder),
 		[accounts, mailboxOrder],
@@ -283,15 +196,23 @@ export default function HomeRoute() {
 		});
 	};
 
-	const isLoading = !configData;
+	const initializationError = mailboxesQuery.error || configQuery.error;
+	const isLoading = mailboxesQuery.isPending || configQuery.isPending || !user;
+	const isRetrying = mailboxesQuery.isFetching || configQuery.isFetching;
 	const mailboxCount = orderedAccounts.length;
 	const totalUnreadCount = orderedAccounts.reduce(
 		(sum, account) => sum + (unreadCounts[account.id] ?? unreadCounts[account.email] ?? 0),
 		0,
 	);
-	const configuredCount = emailAddresses.length;
-	const routeMode = isConfigured ? "固定路由" : "手动管理";
-	const primaryDomain = domains[0] || "未配置";
+	const routeMode = isAdmin ? "管理员 · 任意可用地址" : `${user?.mailboxPrefix ?? "账号"}.* 命名空间`;
+	const routeScope = isAdmin ? "任意可用" : `${user?.mailboxPrefix ?? ""}.*`;
+	const primaryDomain = "oofo.cc";
+	const previewPart = newPrefix.trim().toLowerCase();
+	const mailboxPreview = previewPart
+		? `${isAdmin ? previewPart : `${user?.mailboxPrefix}.${previewPart}`}@${primaryDomain}`
+		: isAdmin
+			? `任意本地部分@${primaryDomain}`
+			: `${user?.mailboxPrefix ?? "前缀"}.自定义@${primaryDomain}`;
 
 	return (
 		<div className="min-h-screen bg-muted/30 text-foreground">
@@ -320,15 +241,41 @@ export default function HomeRoute() {
 							)}
 						</div>
 					</div>
-					{!isConfigured && (
+					<div className="flex items-center gap-2">
+						<AccountMenu />
 						<Button onClick={() => setIsCreateOpen(true)}>
 							<Plus className="h-4 w-4" />
 							新建邮箱
 						</Button>
-					)}
+					</div>
 				</header>
 
-				{isLoading ? (
+				{initializationError ? (
+					<div className="flex flex-1 items-center justify-center">
+						<div className="w-full max-w-lg rounded-xl border border-border bg-card px-6 py-12 text-center shadow-sm">
+							<h2 className="text-base font-semibold">邮箱数据加载失败</h2>
+							<p className="mt-2 text-sm text-muted-foreground">
+								请检查网络连接或服务配置后重试。
+							</p>
+							<Button
+								className="mt-5"
+								variant="outline"
+								disabled={isRetrying}
+								onClick={() => void Promise.all([
+									mailboxesQuery.refetch(),
+									configQuery.refetch(),
+								])}
+							>
+								{isRetrying ? (
+									<Loader2 className="h-4 w-4 animate-spin" />
+								) : (
+									<RefreshCw className="h-4 w-4" />
+								)}
+								重新加载
+							</Button>
+						</div>
+					</div>
+				) : isLoading ? (
 					<div className="flex flex-1 items-center justify-center">
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
 							<Loader2 className="h-5 w-5 animate-spin" />
@@ -337,7 +284,7 @@ export default function HomeRoute() {
 					</div>
 				) : orderedAccounts.length > 0 ? (
 					<>
-					<div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm shadow-sm">
+						<div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm shadow-sm">
 						<div className="flex items-center gap-2 pr-3">
 							<Mail className="h-4 w-4 text-muted-foreground" />
 							<span className="font-medium">{mailboxCount}</span>
@@ -358,12 +305,12 @@ export default function HomeRoute() {
 						<div className="h-4 w-px bg-border" />
 						<div className="flex items-center gap-2 pl-3">
 							<Route className="h-4 w-4 text-muted-foreground" />
-							<span className="font-medium">{configuredCount || "不限"}</span>
-							<span className="text-muted-foreground">路由地址</span>
+							<span className="font-medium">{routeScope}</span>
+							<span className="text-muted-foreground">地址范围</span>
 						</div>
-					</div>
+						</div>
 
-					<div className="grid flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+						<div className="grid flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
 						<section className="min-w-0">
 							<div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
 								<div className="hidden grid-cols-[28px_minmax(0,1fr)_160px_44px] items-center gap-3 border-b border-border bg-muted/50 px-5 py-3 text-xs font-medium text-muted-foreground md:grid">
@@ -433,10 +380,9 @@ export default function HomeRoute() {
 													</div>
 												</div>
 											</div>
-											<div className="hidden truncate text-sm text-muted-foreground md:block">
-												{domain}
-											</div>
-											{!isConfigured ? (
+												<div className="hidden truncate text-sm text-muted-foreground md:block">
+													{domain}
+												</div>
 												<Button
 													variant="ghost"
 													size="icon-sm"
@@ -454,9 +400,6 @@ export default function HomeRoute() {
 												>
 													<Trash2 className="h-4 w-4" />
 												</Button>
-											) : (
-												<div className="hidden md:block" />
-											)}
 										</RouterLink>
 									);
 								})}
@@ -508,8 +451,8 @@ export default function HomeRoute() {
 										<span className="truncate font-medium">{domains.length || 0}</span>
 									</div>
 									<div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
-										<span className="text-muted-foreground">路由地址</span>
-										<span className="font-medium">{configuredCount || "不限"}</span>
+										<span className="text-muted-foreground">地址范围</span>
+										<span className="font-medium">{routeScope}</span>
 									</div>
 								</div>
 							</div>
@@ -540,15 +483,15 @@ export default function HomeRoute() {
 										<CheckCircle2 className="h-4 w-4" />
 									</div>
 									<div className="min-w-0">
-										<div className="text-sm font-medium">本地偏好已启用</div>
+										<div className="text-sm font-medium">账号偏好已启用</div>
 										<div className="mt-1 text-xs leading-relaxed text-muted-foreground">
-											邮箱排序会保存在当前浏览器。
+											邮箱排序会安全地保存在当前账号下。
 										</div>
 									</div>
 								</div>
 							</div>
 						</aside>
-					</div>
+						</div>
 					</>
 				) : (
 					<div className="flex flex-1 items-center justify-center">
@@ -559,16 +502,12 @@ export default function HomeRoute() {
 							</div>
 							<h3 className="mb-1.5 text-base font-semibold">还没有邮箱</h3>
 							<p className="mb-5 max-w-sm text-sm text-muted-foreground">
-								{isConfigured
-									? "邮件路由已配置，但还没有创建邮箱。创建后会自动显示在这里。"
-									: "创建一个邮箱，即可用你的域名收发邮件。"}
+								创建一个邮箱，即可用你的域名收发邮件。
 							</p>
-							{!isConfigured && (
-								<Button size="sm" onClick={() => setIsCreateOpen(true)}>
-									<Plus className="h-4 w-4" />
-									创建邮箱
-								</Button>
-							)}
+							<Button size="sm" onClick={() => setIsCreateOpen(true)}>
+								<Plus className="h-4 w-4" />
+								创建邮箱
+							</Button>
 						</div>
 					</div>
 					</div>
@@ -586,40 +525,25 @@ export default function HomeRoute() {
 							<p className="text-sm text-destructive">{createError}</p>
 						)}
 						<div className="space-y-1.5">
-							<Label>邮箱地址</Label>
-							<textarea
-								aria-label="邮箱地址"
-								placeholder="info&#10;sales&#10;support@example.com"
+							<Label>{isAdmin ? "邮箱本地部分" : "自定义部分"}</Label>
+							<Input
+								aria-label={isAdmin ? "邮箱本地部分" : "自定义部分"}
+								placeholder={isAdmin ? "aaa.aa.aa.a" : "support.team"}
 								value={newPrefix}
 								onChange={(e) => setNewPrefix(e.target.value)}
 								required
-								rows={4}
-								className="min-h-24 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 							/>
 							<p className="text-xs text-muted-foreground">
-								支持一行一个，或用逗号、空格分隔；未带 @ 的条目会使用默认域名。
+								{isAdmin
+									? "可填写任意层级，例如 aa、aaa.aa 或 aaa.aa.aa.a；无需填写 @oofo.cc。"
+									: `最终地址固定以 ${user?.mailboxPrefix}. 开头，可在后面使用多级点号。`}
 							</p>
 						</div>
 						<div className="space-y-1.5">
-							<Label>默认域名</Label>
-							{domains.length > 1 ? (
-								<select
-									aria-label="默认域名"
-									value={selectedDomain}
-									onChange={(e) => setSelectedDomain(e.target.value)}
-									className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-								>
-									{domains.map((d) => (
-										<option key={d} value={d}>
-											{d}
-										</option>
-									))}
-								</select>
-							) : (
-								<Badge variant="secondary" className="w-fit shrink-0">
-									{selectedDomain || "无域名"}
-								</Badge>
-							)}
+							<Label>将创建</Label>
+							<div className="rounded-md border border-border bg-muted/50 px-3 py-2 text-sm font-medium">
+								{mailboxPreview}
+							</div>
 						</div>
 						<div className="space-y-1.5">
 							<Label>显示名称（可选）</Label>
@@ -628,9 +552,7 @@ export default function HomeRoute() {
 								value={newName}
 								onChange={(e) => setNewName(e.target.value)}
 							/>
-							<p className="text-xs text-muted-foreground">
-								批量创建时会自动使用邮箱前缀作为显示名称。
-							</p>
+							<p className="text-xs text-muted-foreground">留空时使用本地部分作为显示名称。</p>
 						</div>
 						<DialogFooter className="pt-2">
 							<DialogClose asChild>

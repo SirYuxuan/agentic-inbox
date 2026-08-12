@@ -3,16 +3,25 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { AIChatAgent } from "@cloudflare/ai-chat";
+import type { OnChatMessageOptions } from "@cloudflare/ai-chat";
 import {
 	streamText,
 	generateText,
 	convertToModelMessages,
+	pruneMessages,
+	simulateStreamingMiddleware,
 	stepCountIs,
+	wrapLanguageModel,
 } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import type { EmailFull, EmailMetadata } from "../lib/schemas";
-import { verifyDraft, isPromptInjection } from "../lib/ai";
+import {
+	EMAIL_AGENT_MODEL,
+	EMAIL_CHAT_MODEL,
+	verifyDraft,
+	isPromptInjection,
+} from "../lib/ai";
 import {
 	getMailboxStub,
 	stripHtmlToText,
@@ -86,6 +95,8 @@ const DEFAULT_SYSTEM_PROMPT = `你是一个邮件助手，负责帮助管理这�
 
 ## 草稿管理
 使用 discard_draft 删除操作者拒绝或不再需要的草稿。`;
+
+const PLAIN_CHAT_SYSTEM_PROMPT = `你是邮件客户端中的中文 AI 助手。当前用户消息不需要访问或修改邮箱数据，因此请直接、简洁、自然地回答用户。不要调用工具，不要声称已查看邮件，也不要执行任何邮件操作。`;
 
 /**
  * Fetch the custom system prompt for a mailbox from its R2 settings.
@@ -269,27 +280,122 @@ function createEmailTools(env: Env, mailboxId: string) {
 	};
 }
 
+function latestUserText(messages: Array<{ role: string; parts?: Array<unknown> }>): string {
+	let latestUserMessage: { role: string; parts?: Array<unknown> } | undefined;
+	for (let index = messages.length - 1; index >= 0; index--) {
+		if (messages[index].role === "user") {
+			latestUserMessage = messages[index];
+			break;
+		}
+	}
+	if (!latestUserMessage?.parts) return "";
+	return latestUserMessage.parts
+		.filter((part): part is { type: "text"; text: string } => {
+			return typeof part === "object"
+				&& part !== null
+				&& (part as { type?: unknown }).type === "text"
+				&& typeof (part as { text?: unknown }).text === "string";
+		})
+		.map((part) => part.text)
+		.join("\n")
+		.trim();
+}
+
+function needsEmailTools(text: string): boolean {
+	if (/^\s*(?:只|请)?\s*(?:回复|回答|输出)(?:文字)?\s*[：:]/.test(text)) {
+		return false;
+	}
+	return /(?:邮件|邮箱|收件箱|发件箱|草稿|回复|起草|写信|未读|已读|归档|废纸篓|垃圾邮件|搜索|查找|移动|删除|email|mail|inbox|draft|reply|thread|unread|archive|trash|spam)/i.test(text);
+}
+
 // Use `any` for the Env generic to avoid type conflicts between the custom
 // SEND_EMAIL binding shape and the AIChatAgent constraint.  The actual env
 // is fully typed inside the tools via the closure.
 export class EmailAgent extends AIChatAgent<any> {
-	async onChatMessage(onFinish: any) {
+	/** Remove chat history that may survive an address deleted by the old app. */
+	async resetForNewMailbox(): Promise<void> {
+		this.sql`delete from cf_ai_chat_request_context`;
+		this._resumableStream.clearAll();
+		await this.persistMessages([], [], { _deleteStaleRows: true });
+	}
+
+	private async assertAuthenticatedAccess(): Promise<void> {
+		const env = this.env as Env;
+		const mailboxId = this.name.trim().toLowerCase();
+		// The public Worker validates the signed-in session and mailbox claim
+		// before routing this WebSocket. The DO re-checks that the address still
+		// has an active owner, without relying on ctx.props (service props are
+		// constructor-time and may be absent on an already-running DO instance).
+		const access = await env.AUTH_DB.prepare(`
+			SELECT 1 FROM mailbox_claims
+			WHERE mailbox_id = ? COLLATE NOCASE AND status = 'active'
+			LIMIT 1
+		`).bind(mailboxId).first();
+		if (!access) throw new Error("Unauthorized agent session");
+	}
+
+	async onChatMessage(onFinish: any, options?: OnChatMessageOptions) {
+		await this.assertAuthenticatedAccess();
 		const env = this.env as Env;
 		const mailboxId = this.name;
 		const workersai = createWorkersAI({ binding: env.AI });
-		const tools = createEmailTools(env, mailboxId);
+		const emailTools = createEmailTools(env, mailboxId);
+		const tools = needsEmailTools(latestUserText(this.messages))
+			? emailTools
+			: undefined;
 		const systemPrompt = await getSystemPrompt(env, mailboxId);
+		const recentMessages = pruneMessages({
+			messages: await convertToModelMessages(this.messages.slice(-1), {
+				tools: emailTools,
+				ignoreIncompleteToolCalls: true,
+			}),
+			reasoning: "all",
+			toolCalls: "before-last-2-messages",
+			emptyMessages: "remove",
+		});
+		const timeoutSignal = AbortSignal.timeout(60_000);
+		const abortSignal = options?.abortSignal
+			? AbortSignal.any([options.abortSignal, timeoutSignal])
+			: timeoutSignal;
+		// Workers AI's native tool stream can lose the tool result between
+		// steps for this provider combination. Use the reliable non-streaming
+		// model call and expose each completed step through the UI stream.
+		const model = wrapLanguageModel({
+			model: workersai(EMAIL_CHAT_MODEL),
+			middleware: simulateStreamingMiddleware(),
+		});
 
 		const result = streamText({
-			model: workersai("@cf/moonshotai/kimi-k2.5"),
-			system: systemPrompt,
-			messages: await convertToModelMessages(this.messages),
-			tools,
-			stopWhen: stepCountIs(5),
+			model,
+			system: tools ? systemPrompt : PLAIN_CHAT_SYSTEM_PROMPT,
+			messages: recentMessages,
+			...(tools ? {
+				tools,
+				stopWhen: stepCountIs(2),
+				prepareStep: ({ stepNumber }: { stepNumber: number }) => {
+					return stepNumber > 0
+						? { activeTools: [] as Array<keyof typeof tools>, toolChoice: "none" as const }
+						: undefined;
+				},
+			} : {}),
+			maxOutputTokens: 1_024,
+			abortSignal,
+			onError: ({ error }) => {
+				const detail = error instanceof Error
+					? `${error.name}: ${error.message}`
+					: String(error);
+				console.error("Email agent model stream failed:", detail);
+			},
 			onFinish,
 		});
 
-		return result.toUIMessageStreamResponse();
+		return result.toUIMessageStreamResponse({
+			// AIChatAgent already owns the assistant message being assembled. A
+			// second start chunk with the provider's message id makes the client
+			// replay the same delta twice on this SDK combination.
+			sendStart: false,
+			onError: () => "邮件助手暂时不可用，请稍后重试。",
+		});
 	}
 
 	/**
@@ -307,6 +413,14 @@ export class EmailAgent extends AIChatAgent<any> {
 					subject: string;
 					threadId: string;
 				};
+				const mailboxId = this.name.trim().toLowerCase();
+				if (emailData.mailboxId.trim().toLowerCase() !== mailboxId) {
+					return new Response(JSON.stringify({ error: "Mailbox mismatch" }), {
+						status: 403,
+						headers: { "Content-Type": "application/json" },
+					});
+				}
+				emailData.mailboxId = mailboxId;
 				const result = await this.handleNewEmail(emailData);
 				return new Response(JSON.stringify(result), {
 					headers: { "Content-Type": "application/json" },
@@ -463,11 +577,13 @@ Based on the email content and thread context above, draft a reply using draft_r
 
 		try {
 			const result = await generateText({
-				model: workersai("@cf/moonshotai/kimi-k2.5"),
+				model: workersai(EMAIL_AGENT_MODEL),
 				system: systemPrompt,
 				messages: await convertToModelMessages(messages),
 				tools,
 				stopWhen: stepCountIs(5),
+				maxOutputTokens: 2_048,
+				abortSignal: AbortSignal.timeout(90_000),
 			});
 
 			// Check if draft_reply was called (saves to Drafts as side effect).

@@ -15,6 +15,8 @@ import {
 	generateMessageId,
 	buildThreadingHeaders,
 	listMailboxes,
+	ensureMailboxNamespace,
+	getUserDataKey,
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
 import { notifyTelegram } from "./lib/telegram";
@@ -28,8 +30,9 @@ type AppContext = Context<MailboxContext>;
 // -- Request body schemas (kept for validation) ---------------------
 
 const CreateMailboxBody = z.object({
-	email: z.string().email(),
-	name: z.string().min(1),
+	name: z.string().trim().min(1).max(100),
+	customPart: z.string().trim().optional(),
+	localPart: z.string().trim().optional(),
 	settings: z.record(z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
 });
 
@@ -73,6 +76,48 @@ function boolQuery(c: AppContext, key: string): boolean | undefined {
 	return v === "true" || v === "1";
 }
 
+const MAILBOX_DOMAIN = "oofo.cc";
+const LOCAL_PART_MAX_LENGTH = 64;
+const LOCAL_PART_SEGMENT = /^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$/;
+
+function normalizeLocalPart(value: string): string | null {
+	const localPart = value.trim().toLowerCase();
+	if (!localPart || localPart.length > LOCAL_PART_MAX_LENGTH) return null;
+	const segments = localPart.split(".");
+	if (segments.some((segment) => !LOCAL_PART_SEGMENT.test(segment))) return null;
+	return localPart;
+}
+
+function mailboxAddressForUser(
+	user: MailboxContext["Variables"]["authUser"],
+	body: z.infer<typeof CreateMailboxBody>,
+): string | null {
+	if (user.role === "admin") {
+		const localPart = body.localPart ?? body.customPart;
+		const normalized = localPart ? normalizeLocalPart(localPart) : null;
+		return normalized ? `${normalized}@${MAILBOX_DOMAIN}` : null;
+	}
+
+	if (!body.customPart || body.localPart !== undefined) return null;
+	const prefix = normalizeLocalPart(user.mailboxPrefix);
+	const customPart = normalizeLocalPart(body.customPart);
+	if (!prefix || !customPart) return null;
+	const localPart = `${prefix}.${customPart}`;
+	return localPart.length <= LOCAL_PART_MAX_LENGTH
+		? `${localPart}@${MAILBOX_DOMAIN}`
+		: null;
+}
+
+async function listOwnedMailboxIds(env: Env, userId: string): Promise<string[]> {
+	const result = await env.AUTH_DB.prepare(`
+		SELECT mailbox_id
+		FROM mailbox_claims
+		WHERE user_id = ? AND status = 'active'
+		ORDER BY created_at ASC
+	`).bind(userId).all<{ mailbox_id: string }>();
+	return result.results.map((row) => row.mailbox_id.toLowerCase());
+}
+
 // -- App & middleware -----------------------------------------------
 
 const app = new Hono<MailboxContext>();
@@ -95,20 +140,18 @@ app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
 
 // -- Config ---------------------------------------------------------
 
-app.get("/api/v1/config", (c) => {
+app.get("/api/v1/config", async (c) => {
 	const domainsRaw = c.env.DOMAINS || "";
 	const domains = domainsRaw.split(",").map((d) => d.trim()).filter(Boolean);
-	const emailAddresses = c.env.EMAIL_ADDRESSES ?? [];
+	const emailAddresses = await listOwnedMailboxIds(c.env, c.var.authUser.id);
 	return c.json({ domains, emailAddresses });
 });
 
-// -- Contacts (global address book, shared across all mailboxes) -----
-// Stored as a single JSON array in R2 at `contacts.json`. Single-user
-// usage means a read-modify-write of the whole file is fine.
+// -- Per-user address book and preferences --------------------------
 
-const CONTACTS_KEY = "contacts.json";
-const MAILBOX_ORDER_KEY = "settings/mailbox-order.json";
-const TRUSTED_IMAGE_SENDERS_KEY = "settings/trusted-image-senders.json";
+const CONTACTS_FILE = "contacts.json";
+const MAILBOX_ORDER_FILE = "settings/mailbox-order.json";
+const TRUSTED_IMAGE_SENDERS_FILE = "settings/trusted-image-senders.json";
 
 const ContactBody = z.object({
 	name: z.string().trim().min(1),
@@ -121,8 +164,8 @@ interface Contact {
 	email: string;
 }
 
-async function readContacts(env: Env): Promise<Contact[]> {
-	const obj = await env.BUCKET.get(CONTACTS_KEY);
+async function readContacts(env: Env, userId: string): Promise<Contact[]> {
+	const obj = await env.BUCKET.get(getUserDataKey(userId, CONTACTS_FILE));
 	if (!obj) return [];
 	try {
 		const parsed = await obj.json<Contact[]>();
@@ -132,14 +175,15 @@ async function readContacts(env: Env): Promise<Contact[]> {
 	}
 }
 
-async function writeContacts(env: Env, contacts: Contact[]): Promise<void> {
-	await env.BUCKET.put(CONTACTS_KEY, JSON.stringify(contacts));
+async function writeContacts(env: Env, userId: string, contacts: Contact[]): Promise<void> {
+	await env.BUCKET.put(getUserDataKey(userId, CONTACTS_FILE), JSON.stringify(contacts));
 }
 
-async function readTrustedImageSenders(env: Env): Promise<string[]> {
-	const obj = await env.BUCKET.get(TRUSTED_IMAGE_SENDERS_KEY);
+async function readTrustedImageSenders(env: Env, userId: string): Promise<string[]> {
+	const obj = await env.BUCKET.get(getUserDataKey(userId, TRUSTED_IMAGE_SENDERS_FILE));
 	if (!obj) {
-		const mailboxes = await listMailboxes(env.BUCKET);
+		const mailboxIds = await listOwnedMailboxIds(env, userId);
+		const mailboxes = await listMailboxes(env.BUCKET, mailboxIds);
 		return Array.from(
 			new Set(
 				mailboxes.flatMap((mailbox) => {
@@ -161,9 +205,12 @@ async function readTrustedImageSenders(env: Env): Promise<string[]> {
 	}
 }
 
-async function writeTrustedImageSenders(env: Env, senders: string[]): Promise<string[]> {
+async function writeTrustedImageSenders(env: Env, userId: string, senders: string[]): Promise<string[]> {
 	const normalized = Array.from(new Set(senders.map((sender) => sender.toLowerCase())));
-	await env.BUCKET.put(TRUSTED_IMAGE_SENDERS_KEY, JSON.stringify({ senders: normalized }));
+	await env.BUCKET.put(
+		getUserDataKey(userId, TRUSTED_IMAGE_SENDERS_FILE),
+		JSON.stringify({ senders: normalized }),
+	);
 	return normalized;
 }
 
@@ -178,7 +225,7 @@ async function sha256Hex(value: string): Promise<string> {
 }
 
 app.get("/api/v1/contacts", async (c) => {
-	const contacts = await readContacts(c.env);
+	const contacts = await readContacts(c.env, c.var.authUser.id);
 	contacts.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN"));
 	return c.json(contacts);
 });
@@ -189,13 +236,13 @@ app.post("/api/v1/contacts", async (c) => {
 	const { name } = parsed.data;
 	const email = parsed.data.email.toLowerCase();
 
-	const contacts = await readContacts(c.env);
+	const contacts = await readContacts(c.env, c.var.authUser.id);
 	if (contacts.some((ct) => ct.email === email)) {
 		return c.json({ error: "该邮箱已存在于通讯录中" }, 409);
 	}
 	const contact: Contact = { id: crypto.randomUUID(), name, email };
 	contacts.push(contact);
-	await writeContacts(c.env, contacts);
+	await writeContacts(c.env, c.var.authUser.id, contacts);
 	return c.json(contact, 201);
 });
 
@@ -206,48 +253,50 @@ app.put("/api/v1/contacts/:id", async (c) => {
 	const { name } = parsed.data;
 	const email = parsed.data.email.toLowerCase();
 
-	const contacts = await readContacts(c.env);
+	const contacts = await readContacts(c.env, c.var.authUser.id);
 	const idx = contacts.findIndex((ct) => ct.id === id);
 	if (idx === -1) return c.json({ error: "联系人不存在" }, 404);
 	if (contacts.some((ct) => ct.email === email && ct.id !== id)) {
 		return c.json({ error: "该邮箱已存在于通讯录中" }, 409);
 	}
 	contacts[idx] = { id, name, email };
-	await writeContacts(c.env, contacts);
+	await writeContacts(c.env, c.var.authUser.id, contacts);
 	return c.json(contacts[idx]);
 });
 
 app.delete("/api/v1/contacts/:id", async (c) => {
 	const id = c.req.param("id");
-	const contacts = await readContacts(c.env);
+	const contacts = await readContacts(c.env, c.var.authUser.id);
 	const next = contacts.filter((ct) => ct.id !== id);
 	if (next.length === contacts.length) return c.json({ error: "联系人不存在" }, 404);
-	await writeContacts(c.env, next);
+	await writeContacts(c.env, c.var.authUser.id, next);
 	return c.body(null, 204);
 });
 
-// -- Global trusted image senders -----------------------------------
+// -- Per-user trusted image senders ---------------------------------
 
 app.get("/api/v1/trusted-image-senders", async (c) => {
-	return c.json({ senders: await readTrustedImageSenders(c.env) });
+	return c.json({ senders: await readTrustedImageSenders(c.env, c.var.authUser.id) });
 });
 
 app.put("/api/v1/trusted-image-senders", async (c) => {
 	const parsed = TrustedImageSendersBody.safeParse(await c.req.json());
 	if (!parsed.success) return c.json({ error: "Invalid trusted senders" }, 400);
-	const senders = await writeTrustedImageSenders(c.env, parsed.data.senders);
+	const senders = await writeTrustedImageSenders(c.env, c.var.authUser.id, parsed.data.senders);
 	return c.json({ senders });
 });
 
 // -- Mailboxes ------------------------------------------------------
 
 app.get("/api/v1/mailboxes", async (c) => {
-	const allMailboxes = await listMailboxes(c.env.BUCKET);
+	const mailboxIds = await listOwnedMailboxIds(c.env, c.var.authUser.id);
+	const allMailboxes = await listMailboxes(c.env.BUCKET, mailboxIds);
 	return c.json(allMailboxes);
 });
 
 app.get("/api/v1/mailboxes/unread-counts", async (c) => {
-	const allMailboxes = await listMailboxes(c.env.BUCKET);
+	const mailboxIds = await listOwnedMailboxIds(c.env, c.var.authUser.id);
+	const allMailboxes = await listMailboxes(c.env.BUCKET, mailboxIds);
 	const entries = await Promise.all(
 		allMailboxes.map(async (mailbox) => {
 			const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(mailbox.id));
@@ -260,7 +309,9 @@ app.get("/api/v1/mailboxes/unread-counts", async (c) => {
 });
 
 app.get("/api/v1/mailboxes/order", async (c) => {
-	const obj = await c.env.BUCKET.get(MAILBOX_ORDER_KEY);
+	const obj = await c.env.BUCKET.get(
+		getUserDataKey(c.var.authUser.id, MAILBOX_ORDER_FILE),
+	);
 	if (!obj) return c.json({ order: [] });
 	try {
 		const parsed = await obj.json<{ order?: unknown }>();
@@ -278,36 +329,129 @@ app.put("/api/v1/mailboxes/order", async (c) => {
 	if (!parsed.success) return c.json({ error: "Invalid mailbox order" }, 400);
 
 	const order = parsed.data.order.map((email) => email.toLowerCase());
-	await c.env.BUCKET.put(MAILBOX_ORDER_KEY, JSON.stringify({ order }));
+	const owned = new Set(await listOwnedMailboxIds(c.env, c.var.authUser.id));
+	if (order.some((email) => !owned.has(email))) {
+		return c.json({ error: "Mailbox order contains an unknown mailbox" }, 400);
+	}
+	await c.env.BUCKET.put(
+		getUserDataKey(c.var.authUser.id, MAILBOX_ORDER_FILE),
+		JSON.stringify({ order }),
+	);
 	return c.json({ order });
 });
 
 app.post("/api/v1/mailboxes", async (c) => {
-	const { name, settings, email: rawEmail } = CreateMailboxBody.parse(await c.req.json());
-	const email = rawEmail.toLowerCase();
-	const allowedAddresses = (c.env.EMAIL_ADDRESSES ?? []) as string[];
-	if (allowedAddresses.length > 0 && !allowedAddresses.map((a) => a.toLowerCase()).includes(email)) {
-		return c.json({ error: "Mailbox creation is restricted to configured EMAIL_ADDRESSES" }, 403);
+	const parsed = CreateMailboxBody.safeParse(await c.req.json().catch(() => null));
+	if (!parsed.success) return c.json({ error: "Invalid mailbox settings" }, 400);
+	const { name, settings } = parsed.data;
+	const email = mailboxAddressForUser(c.var.authUser, parsed.data);
+	if (!email) {
+		return c.json({
+			error: c.var.authUser.role === "admin"
+				? "localPart must contain valid dot-separated mailbox segments"
+				: "customPart must contain valid dot-separated mailbox segments",
+		}, 400);
 	}
+	const customPart = normalizeLocalPart(
+		c.var.authUser.role === "admin"
+			? (parsed.data.localPart ?? parsed.data.customPart ?? "")
+			: (parsed.data.customPart ?? ""),
+	);
+	if (!(await ensureMailboxNamespace(
+		c.env,
+		c.var.authUser.id,
+		email,
+		c.var.authUser.role === "admin",
+	))) {
+		return c.json({ error: "Mailbox namespace is owned by another account" }, 409);
+	}
+
 	const key = `mailboxes/${email}.json`;
-	if (await c.env.BUCKET.head(key)) return c.json({ error: "Mailbox already exists" }, 409);
-	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" } };
-	const finalSettings = { ...defaultSettings, ...settings };
-	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
+	const now = new Date().toISOString();
+	const existingClaim = await c.env.AUTH_DB.prepare(`
+		SELECT user_id, status
+		FROM mailbox_claims
+		WHERE mailbox_id = ? COLLATE NOCASE
+		LIMIT 1
+	`).bind(email).first<{ user_id: string; status: string }>();
+	const isRetry = existingClaim?.user_id === c.var.authUser.id
+		&& existingClaim.status === "provisioning";
+	if (existingClaim && !isRetry) {
+		return c.json({ error: "Mailbox address is already reserved" }, 409);
+	}
+	if (!existingClaim) {
+		try {
+			await c.env.AUTH_DB.prepare(`
+				INSERT INTO mailbox_claims (
+					mailbox_id, user_id, custom_part, status,
+					created_at, updated_at, deleted_at
+				) VALUES (?, ?, ?, 'provisioning', ?, ?, NULL)
+			`).bind(email, c.var.authUser.id, customPart, now, now).run();
+		} catch (error) {
+			// The primary-key constraint is the final authority for concurrent
+			// attempts to reserve the same address.
+			if (error instanceof Error && /UNIQUE constraint failed/i.test(error.message)) {
+				return c.json({ error: "Mailbox address is already reserved" }, 409);
+			}
+			throw error;
+		}
+	}
+
+	const defaultSettings = {
+		fromName: name,
+		forwarding: { enabled: false, email: "" },
+		signature: { enabled: false, text: "" },
+		autoReply: { enabled: false, subject: "", message: "" },
+		autoDraftEnabled: false,
+	};
+	let finalSettings = { ...defaultSettings, ...settings };
+	const created = await c.env.BUCKET.put(key, JSON.stringify(finalSettings), {
+		onlyIf: { etagDoesNotMatch: "*" },
+		customMetadata: { provisioningOwnerId: c.var.authUser.id },
+	});
+	const existingObject = created ? null : await c.env.BUCKET.head(key);
+	const ownsRetryObject = isRetry
+		&& existingObject?.customMetadata?.provisioningOwnerId === c.var.authUser.id;
+	if (!created && !ownsRetryObject) {
+		await c.env.AUTH_DB.prepare(`
+			UPDATE mailbox_claims
+			SET status = 'deleted', updated_at = ?, deleted_at = ?
+			WHERE mailbox_id = ? AND user_id = ? AND status = 'provisioning'
+		`).bind(now, now, email, c.var.authUser.id).run();
+		return c.json({ error: "Mailbox address is already reserved" }, 409);
+	}
+	if (!created) {
+		const existingSettings = await c.env.BUCKET.get(key);
+		if (!existingSettings) {
+			throw new Error(`Mailbox provisioning lost its R2 settings: ${email}`);
+		}
+		finalSettings = await existingSettings.json<typeof finalSettings>();
+	}
+
 	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(email));
+	// Old versions removed only the R2 settings object. Clear any MailboxDO and
+	// EmailAgent state that might still exist for that address before activation.
+	await stub.resetForNewMailbox();
+	const agentStub = c.env.EMAIL_AGENT.get(c.env.EMAIL_AGENT.idFromName(email));
+	await agentStub.resetForNewMailbox();
 	await stub.getFolders();
+	await c.env.AUTH_DB.prepare(`
+		UPDATE mailbox_claims
+		SET status = 'active', updated_at = ?, deleted_at = NULL
+		WHERE mailbox_id = ? AND user_id = ? AND status = 'provisioning'
+	`).bind(new Date().toISOString(), email, c.var.authUser.id).run();
 	return c.json({ id: email, email, name, settings: finalSettings }, 201);
 });
 
 app.get("/api/v1/mailboxes/:mailboxId", async (c) => {
-	const mailboxId = c.req.param("mailboxId")!;
+	const mailboxId = c.var.mailboxId;
 	const obj = await c.env.BUCKET.get(`mailboxes/${mailboxId}.json`);
 	if (!obj) return c.json({ error: "Not found" }, 404);
 	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings: await obj.json() });
 });
 
 app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
-	const mailboxId = c.req.param("mailboxId")!;
+	const mailboxId = c.var.mailboxId;
 	const { settings } = (await c.req.json()) as { settings: Record<string, unknown> };
 	const key = `mailboxes/${mailboxId}.json`;
 	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
@@ -316,10 +460,18 @@ app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 });
 
 app.delete("/api/v1/mailboxes/:mailboxId", async (c) => {
-	const mailboxId = c.req.param("mailboxId")!;
+	const mailboxId = c.var.mailboxId;
 	const key = `mailboxes/${mailboxId}.json`;
 	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
-	await c.env.BUCKET.delete(key); // TODO: also delete DO data and R2 attachment blobs
+	const now = new Date().toISOString();
+	const result = await c.env.AUTH_DB.prepare(`
+		UPDATE mailbox_claims
+		SET status = 'deleted', updated_at = ?, deleted_at = ?
+		WHERE mailbox_id = ? AND user_id = ? AND status = 'active'
+	`).bind(now, now, mailboxId, c.var.authUser.id).run();
+	if ((result.meta.changes ?? 0) === 0) return c.json({ error: "Not found" }, 404);
+	// Keep the R2 settings and Durable Object data in place. The deleted claim
+	// is a permanent tombstone, so a future account can never inherit old mail.
 	return c.body(null, 204);
 });
 
@@ -349,7 +501,7 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
-	const mailboxId = c.req.param("mailboxId")!;
+	const mailboxId = c.var.mailboxId;
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments, in_reply_to, references, thread_id } = body;
 
@@ -395,7 +547,7 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
-	const mailboxId = c.req.param("mailboxId")!;
+	const mailboxId = c.var.mailboxId;
 	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = DraftBody.parse(await c.req.json());
 	const stub = c.var.mailboxStub;
 	if (draft_id) await stub.deleteEmail(draft_id); // not atomic — create-then-delete would be safer
@@ -439,7 +591,7 @@ app.post("/api/v1/mailboxes/:mailboxId/emails/:id/move", async (c: AppContext) =
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/translate", async (c: AppContext) => {
-	const mailboxId = c.req.param("mailboxId")!;
+	const mailboxId = c.var.mailboxId;
 	const emailId = c.req.param("id")!;
 	const email = await c.var.mailboxStub.getEmail(c.req.param("id")!);
 	if (!email) return c.json({ error: "Email not found" }, 404);
@@ -567,26 +719,39 @@ async function streamToArrayBuffer(stream: ReadableStream, streamSize: number) {
 	return result;
 }
 
-async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env: Env, ctx: ExecutionContext) {
+async function receiveEmail(
+	event: { raw: ReadableStream; rawSize: number; to: string },
+	env: Env,
+	ctx: ExecutionContext,
+) {
+	const envelopeRecipient = event.to.trim().toLowerCase();
+	if (!envelopeRecipient) throw new Error("received email with empty envelope recipient");
+
+	const claim = await env.AUTH_DB.prepare(`
+		SELECT mc.mailbox_id, u.role
+		FROM mailbox_claims mc
+		JOIN users u ON u.id = mc.user_id
+		WHERE mc.mailbox_id = ? COLLATE NOCASE AND mc.status = 'active'
+		LIMIT 1
+	`).bind(envelopeRecipient).first<{ mailbox_id: string; role: "admin" | "user" }>();
+	if (!claim) {
+		console.log(`Ignoring email for ${envelopeRecipient}: mailbox is not active`);
+		return;
+	}
+	const mailboxId = claim.mailbox_id.toLowerCase();
+	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) {
+		console.log(`Ignoring email for ${mailboxId}: mailbox settings do not exist`);
+		return;
+	}
+
 	const rawEmail = await streamToArrayBuffer(event.raw, event.rawSize);
 	const parsedEmail = await new PostalMime().parse(rawEmail);
 
-	if (!parsedEmail.to?.length || !parsedEmail.to[0].address) throw new Error("received email with empty to");
-
-	const allowedAddresses = ((env.EMAIL_ADDRESSES ?? []) as string[]).map((a) => a.toLowerCase());
-	const allRecipients = parsedEmail.to.map((t) => t.address?.toLowerCase()).filter(Boolean) as string[];
+	const allRecipients = (parsedEmail.to || []).map((t) => t.address?.toLowerCase()).filter(Boolean) as string[];
 	const ccRecipients = (parsedEmail.cc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
 	const bccRecipients = (parsedEmail.bcc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
 
-	let mailboxId: string | undefined;
-	if (allowedAddresses.length > 0) {
-		mailboxId = allRecipients.find((addr) => allowedAddresses.includes(addr));
-		if (!mailboxId) { console.log(`Ignoring email: no recipient matches EMAIL_ADDRESSES.`); return; }
-	} else { mailboxId = allRecipients[0]; }
-	if (!mailboxId) throw new Error("received email with no valid recipient address");
-
 	const messageId = crypto.randomUUID();
-	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) { console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`); return; }
 
 	const stub = env.MAILBOX.get(env.MAILBOX.idFromName(mailboxId));
 
@@ -616,7 +781,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 
 	await stub.createEmail(Folders.INBOX, {
 		id: messageId, subject: parsedEmail.subject || "",
-		sender: (parsedEmail.from?.address || "").toLowerCase(), recipient: allRecipients.join(", "),
+		sender: (parsedEmail.from?.address || "").toLowerCase(), recipient: allRecipients.join(", ") || mailboxId,
 		cc: ccRecipients.join(", ") || null, bcc: bccRecipients.join(", ") || null,
 		date: new Date().toISOString(), // uses receive time, not the email's Date header
 		body: parsedEmail.html || parsedEmail.text || "",
@@ -626,29 +791,32 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 
 	// Push a Telegram notification (no-op unless configured). Best-effort:
 	// runs after the email is already stored and never blocks reception.
-	ctx.waitUntil(
-		notifyTelegram(env, {
-			mailboxId,
-			sender: (parsedEmail.from?.address || "").toLowerCase(),
-			subject: parsedEmail.subject || "",
-			body: parsedEmail.html || parsedEmail.text || "",
-			attachmentCount: attachmentData.length,
-		}).catch((e) => console.error("Telegram notify failed:", (e as Error).message)),
-	);
+	// The existing Worker-level Telegram credentials belong to the initial
+	// administrator. Never leak another account's inbound mail to that chat.
+	if (claim.role === "admin") {
+		ctx.waitUntil(
+			notifyTelegram(env, {
+				mailboxId,
+				sender: (parsedEmail.from?.address || "").toLowerCase(),
+				subject: parsedEmail.subject || "",
+				body: parsedEmail.html || parsedEmail.text || "",
+				attachmentCount: attachmentData.length,
+			}).catch((e) => console.error("Telegram notify failed:", (e as Error).message)),
+		);
+	}
 
-	// Auto-draft an AI reply, unless disabled in the mailbox settings.
-	// Absent/true => enabled (preserves existing behavior); only an explicit
-	// `autoDraftEnabled: false` skips the trigger. The email is already stored
-	// above, so receiving is unaffected either way.
-	let autoDraftEnabled = true;
+	// Auto-draft is opt-in. Only an explicit `autoDraftEnabled: true` triggers
+	// the agent; absent, false, invalid, or unreadable settings all stay off.
+	// The email is already stored above, so receiving is unaffected either way.
+	let autoDraftEnabled = false;
 	try {
 		const settingsObj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
 		if (settingsObj) {
 			const settings = await settingsObj.json<Record<string, unknown>>();
-			if (settings.autoDraftEnabled === false) autoDraftEnabled = false;
+			autoDraftEnabled = settings.autoDraftEnabled === true;
 		}
 	} catch {
-		// On settings read failure, fall back to enabled.
+		// Fail closed: a settings read failure must not start AI work.
 	}
 
 	if (autoDraftEnabled) {

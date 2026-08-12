@@ -61,7 +61,10 @@ function mcpResult(result: Record<string, unknown>) {
  * `/mcp` endpoint and can list mailboxes, read/search emails,
  * draft replies, send messages, and manage folders.
  */
-export class EmailMCP extends McpAgent<Env> {
+export class EmailMCP extends McpAgent<Env, unknown, {
+	userId: string;
+	sessionTokenHash: string;
+}> {
 	server = new McpServer({
 		name: "agentic-inbox",
 		version: "1.0.0",
@@ -69,12 +72,38 @@ export class EmailMCP extends McpAgent<Env> {
 
 	async init() {
 		const env = this.env;
+		const userId = this.props?.userId;
+		const sessionTokenHash = this.props?.sessionTokenHash;
+		if (!userId || !sessionTokenHash) {
+			throw new Error("MCP session has no authenticated account");
+		}
+
+		const verifySession = async () => {
+			const session = await env.AUTH_DB.prepare(`
+				SELECT 1 FROM sessions
+				WHERE token_hash = ? AND user_id = ? AND expires_at > ?
+				LIMIT 1
+			`).bind(sessionTokenHash, userId, Date.now()).first();
+			return session ? null : mcpError("MCP session is no longer authenticated.");
+		};
 
 		/**
 		 * Verify a mailbox exists in R2 before operating on it.
 		 * Returns an MCP error response if the mailbox is not found, or null if valid.
 		 */
 		const verifyMailbox = async (mailboxId: string) => {
+			const invalidSession = await verifySession();
+			if (invalidSession) return invalidSession;
+			const claim = await env.AUTH_DB.prepare(`
+				SELECT 1
+				FROM mailbox_claims
+				WHERE mailbox_id = ? COLLATE NOCASE
+					AND user_id = ? AND status = 'active'
+				LIMIT 1
+			`).bind(mailboxId, userId).first();
+			if (!claim) {
+				return mcpError(`Mailbox "${mailboxId}" not found.`);
+			}
 			const obj = await env.BUCKET.head(`mailboxes/${mailboxId}.json`);
 			if (!obj) {
 				return mcpError(`Mailbox "${mailboxId}" not found. Use list_mailboxes to see available mailboxes.`);
@@ -88,7 +117,9 @@ export class EmailMCP extends McpAgent<Env> {
 			"List all available mailboxes",
 			{},
 			async () => {
-				const result = await toolListMailboxes(env);
+				const invalidSession = await verifySession();
+				if (invalidSession) return invalidSession;
+				const result = await toolListMailboxes(env, userId);
 				return mcpText(result);
 			},
 		);

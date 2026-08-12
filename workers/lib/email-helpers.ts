@@ -31,25 +31,186 @@ export function getMailboxStub(
 
 // ── Mailbox Listing ────────────────────────────────────────────────
 
+export function getMailboxNamespace(mailboxId: string): string | null {
+	const separator = mailboxId.lastIndexOf("@");
+	if (separator <= 0) return null;
+	const firstSegment = mailboxId.slice(0, separator).split(".")[0]?.trim().toLowerCase();
+	return firstSegment || null;
+}
+
+export function getUserDataKey(userId: string, name: string): string {
+	return `users/${encodeURIComponent(userId)}/${name}`;
+}
+
 /**
- * List all mailboxes from R2 bucket metadata.
+ * Ensure the first local-part segment belongs to this account. Administrators
+ * may reserve a previously unused namespace; regular users must have reserved
+ * theirs atomically during registration.
+ */
+export async function ensureMailboxNamespace(
+	env: Env,
+	userId: string,
+	mailboxId: string,
+	canReserve: boolean,
+): Promise<boolean> {
+	const namespace = getMailboxNamespace(mailboxId);
+	if (!namespace) return false;
+
+	if (canReserve) {
+		await env.AUTH_DB.prepare(`
+			INSERT INTO mailbox_namespaces (prefix, user_id, created_at)
+			VALUES (?, ?, ?)
+			ON CONFLICT(prefix) DO NOTHING
+		`).bind(namespace, userId, new Date().toISOString()).run();
+	}
+
+	const owner = await env.AUTH_DB.prepare(`
+		SELECT user_id
+		FROM mailbox_namespaces
+		WHERE prefix = ? COLLATE NOCASE
+		LIMIT 1
+	`).bind(namespace).first<{ user_id: string }>();
+	return owner?.user_id === userId;
+}
+
+/**
+ * Load mailbox settings from R2. When IDs are supplied, only those mailboxes
+ * are returned; omitting IDs is reserved for the legacy bootstrap path.
  */
 export async function listMailboxes(
 	bucket: R2Bucket,
+	mailboxIds?: readonly string[],
 ): Promise<{ id: string; email: string; name: string; settings: Record<string, unknown> }[]> {
-	const list = await bucket.list({ prefix: "mailboxes/" });
-	return Promise.all(list.objects.map(async (obj) => {
-		const id = obj.key.replace("mailboxes/", "").replace(".json", "");
+	let ids: string[];
+	if (mailboxIds) {
+		ids = [...new Set(mailboxIds.map((id) => id.toLowerCase()))];
+	} else {
+		ids = [];
+		let cursor: string | undefined;
+		do {
+			const page = await bucket.list({ prefix: "mailboxes/", cursor });
+			ids.push(...page.objects
+				.map((obj) => obj.key.match(/^mailboxes\/(.+)\.json$/)?.[1])
+				.filter((id): id is string => Boolean(id)));
+			cursor = page.truncated ? page.cursor : undefined;
+		} while (cursor);
+	}
+
+	const mailboxes = await Promise.all(ids.map(async (id) => {
+		const key = `mailboxes/${id}.json`;
 		let settings: Record<string, unknown> = {};
 		try {
-			const stored = await bucket.get(obj.key);
-			settings = stored ? await stored.json<Record<string, unknown>>() : {};
+			const stored = await bucket.get(key);
+			if (!stored) return null;
+			settings = await stored.json<Record<string, unknown>>();
 		} catch {
 			settings = {};
 		}
 		const fromName = typeof settings.fromName === "string" ? settings.fromName.trim() : "";
 		return { id, email: id, name: fromName || id, settings };
 	}));
+
+	return mailboxes.filter((mailbox): mailbox is NonNullable<typeof mailbox> => mailbox !== null);
+}
+
+/**
+ * Claim pre-auth mailboxes for the initial administrator without changing
+ * any existing R2 settings or Durable Object data. Existing claims (including
+ * deleted tombstones) are deliberately never reassigned.
+ */
+export async function bootstrapExistingMailboxClaims(
+	env: Env,
+	userId: string,
+): Promise<{ discovered: number; claimed: number }> {
+	const markerKey = "legacy_mailboxes_claimed";
+	const marker = await env.AUTH_DB.prepare(`
+		SELECT value FROM system_meta WHERE key = ? LIMIT 1
+	`).bind(markerKey).first<{ value: string }>();
+	if (marker) {
+		if (marker.value !== userId) {
+			throw new Error("Legacy mailboxes were bootstrapped to a different account");
+		}
+		return { discovered: 0, claimed: 0 };
+	}
+
+	// The pre-auth app stored these preferences globally. Preserve them for the
+	// initial administrator while all new reads/writes use per-user keys.
+	for (const legacyKey of [
+		"contacts.json",
+		"settings/mailbox-order.json",
+		"settings/trusted-image-senders.json",
+	]) {
+		const source = await env.BUCKET.get(legacyKey);
+		if (!source) continue;
+		await env.BUCKET.put(
+			getUserDataKey(userId, legacyKey),
+			await source.arrayBuffer(),
+			{ onlyIf: { etagDoesNotMatch: "*" } },
+		);
+	}
+
+	const mailboxes = await listMailboxes(env.BUCKET);
+	let claimed = 0;
+	const now = new Date().toISOString();
+	const namespaces = [...new Set(mailboxes
+		.map((mailbox) => getMailboxNamespace(mailbox.id))
+		.filter((prefix): prefix is string => Boolean(prefix)))];
+
+	for (let offset = 0; offset < namespaces.length; offset += 100) {
+		const chunk = namespaces.slice(offset, offset + 100);
+		await env.AUTH_DB.batch(chunk.map((prefix) =>
+			env.AUTH_DB.prepare(`
+				INSERT INTO mailbox_namespaces (prefix, user_id, created_at)
+				VALUES (?, ?, ?)
+				ON CONFLICT(prefix) DO NOTHING
+			`).bind(prefix, userId, now)
+		));
+	}
+
+	for (let offset = 0; offset < namespaces.length; offset += 100) {
+		const chunk = namespaces.slice(offset, offset + 100);
+		if (chunk.length === 0) continue;
+		const placeholders = chunk.map(() => "?").join(", ");
+		const conflict = await env.AUTH_DB.prepare(`
+			SELECT prefix
+			FROM mailbox_namespaces
+			WHERE prefix IN (${placeholders}) AND user_id <> ?
+			LIMIT 1
+		`).bind(...chunk, userId).first<{ prefix: string }>();
+		if (conflict) {
+			throw new Error(`Legacy mailbox namespace is already owned: ${conflict.prefix}`);
+		}
+	}
+
+	// Keep batches small enough for D1's per-request query limits while still
+	// making each chunk atomic.
+	for (let offset = 0; offset < mailboxes.length; offset += 100) {
+		const chunk = mailboxes.slice(offset, offset + 100);
+		if (chunk.length === 0) continue;
+		const results = await env.AUTH_DB.batch(chunk.map((mailbox) =>
+			env.AUTH_DB.prepare(`
+				INSERT INTO mailbox_claims (
+					mailbox_id, user_id, status, created_at, updated_at, deleted_at
+				) VALUES (?, ?, 'active', ?, ?, NULL)
+				ON CONFLICT(mailbox_id) DO NOTHING
+			`).bind(mailbox.id.toLowerCase(), userId, now, now)
+		));
+		claimed += results.reduce((total, result) => total + (result.meta.changes ?? 0), 0);
+	}
+
+	await env.AUTH_DB.prepare(`
+		INSERT INTO system_meta (key, value)
+		VALUES (?, ?)
+		ON CONFLICT(key) DO NOTHING
+	`).bind(markerKey, userId).run();
+	const completed = await env.AUTH_DB.prepare(`
+		SELECT value FROM system_meta WHERE key = ? LIMIT 1
+	`).bind(markerKey).first<{ value: string }>();
+	if (completed?.value !== userId) {
+		throw new Error("Legacy mailbox bootstrap ownership conflict");
+	}
+
+	return { discovered: mailboxes.length, claimed };
 }
 
 // ── Sender Validation ──────────────────────────────────────────────

@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "~/services/api";
-import type { Mailbox } from "~/types";
+import type { CreateMailboxInput, Mailbox } from "~/types";
 import { queryKeys } from "./keys";
 
 export function useMailboxes() {
@@ -27,8 +27,7 @@ export function useMailbox(mailboxId: string | undefined) {
 export function useCreateMailbox() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: ({ email, name }: { email: string; name: string }) =>
-			api.createMailbox(email, name),
+		mutationFn: (input: CreateMailboxInput) => api.createMailbox(input),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queryKeys.mailboxes.all });
 		},

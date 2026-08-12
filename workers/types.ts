@@ -3,8 +3,8 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 export interface Env extends Cloudflare.Env {
-	POLICY_AUD: string;
-	TEAM_DOMAIN: string;
+	AUTH_DB: D1Database;
+	REGISTRATION_KEY: string;
 	RESEND_API_KEY: string;
 	// Optional Telegram notifications for inbound email. When both are set,
 	// each received email is pushed to this chat. Leave unset to disable.

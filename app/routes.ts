@@ -4,18 +4,23 @@
 
 import {
 	index,
+	layout,
 	type RouteConfig,
 	route,
 } from "@react-router/dev/routes";
 
 export default [
-	index("routes/home.tsx"),
-	route("mailbox/:mailboxId", "routes/mailbox.tsx", [
-		index("routes/mailbox-index.tsx"),
-		route("emails/:folder", "routes/email-list.tsx"),
-		route("contacts", "routes/contacts.tsx"),
-		route("settings", "routes/settings.tsx"),
-		route("search", "routes/search-results.tsx"),
+	route("login", "routes/login.tsx"),
+	route("register", "routes/register.tsx"),
+	layout("routes/authenticated.tsx", [
+		index("routes/home.tsx"),
+		route("mailbox/:mailboxId", "routes/mailbox.tsx", [
+			index("routes/mailbox-index.tsx"),
+			route("emails/:folder", "routes/email-list.tsx"),
+			route("contacts", "routes/contacts.tsx"),
+			route("settings", "routes/settings.tsx"),
+			route("search", "routes/search-results.tsx"),
+		]),
+		route("*", "routes/not-found.tsx"),
 	]),
-	route("*", "routes/not-found.tsx"),
 ] satisfies RouteConfig;

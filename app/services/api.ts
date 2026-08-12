@@ -2,10 +2,23 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Contact, Email, EmailTranslation, Folder, Mailbox } from "~/types";
+import type {
+	AuthSession,
+	Contact,
+	CreateMailboxInput,
+	Email,
+	EmailTranslation,
+	Folder,
+	Mailbox,
+} from "~/types";
+import { clearUserScopedStorage } from "~/lib/auth-client";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const TRANSLATION_TIMEOUT_MS = 120_000;
+
+interface RequestBehavior {
+	redirectOnUnauthorized?: boolean;
+}
 
 export class ApiError extends Error {
 	status: number;
@@ -23,6 +36,7 @@ async function request<T>(
 	url: string,
 	options: RequestInit = {},
 	timeoutMs = REQUEST_TIMEOUT_MS,
+	behavior: RequestBehavior = {},
 ): Promise<T> {
 	const controller = new AbortController();
 	const timeout = setTimeout(
@@ -39,6 +53,7 @@ async function request<T>(
 		const res = await fetch(url, {
 			...options,
 			signal,
+			credentials: "same-origin",
 			headers: {
 				"Content-Type": "application/json",
 				...(options.headers as Record<string, string>),
@@ -47,6 +62,18 @@ async function request<T>(
 
 		if (!res.ok) {
 			const body = await res.json().catch(() => ({}));
+			if (
+				res.status === 401 &&
+				behavior.redirectOnUnauthorized !== false &&
+				typeof window !== "undefined"
+			) {
+				const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+				const next = currentPath.startsWith("/login") || currentPath.startsWith("/register")
+					? "/"
+					: currentPath;
+				clearUserScopedStorage();
+				window.location.replace(`/login?next=${encodeURIComponent(next)}`);
+			}
 			throw new ApiError(res.status, body as Record<string, unknown>);
 		}
 
@@ -62,16 +89,21 @@ async function request<T>(
 	}
 }
 
-function get<T>(url: string, opts?: { params?: Record<string, string>; responseType?: string; signal?: AbortSignal }) {
+function get<T>(url: string, opts?: { params?: Record<string, string>; responseType?: string; signal?: AbortSignal; redirectOnUnauthorized?: boolean }) {
 	const query = opts?.params ? `?${new URLSearchParams(opts.params)}` : "";
-	return request<T>(`${url}${query}`, {
-		method: "GET",
-		signal: opts?.signal,
-		...(opts?.responseType === "blob" ? { headers: { Accept: "*/*" } } : {}),
-	});
+	return request<T>(
+		`${url}${query}`,
+		{
+			method: "GET",
+			signal: opts?.signal,
+			...(opts?.responseType === "blob" ? { headers: { Accept: "*/*" } } : {}),
+		},
+		REQUEST_TIMEOUT_MS,
+		{ redirectOnUnauthorized: opts?.redirectOnUnauthorized },
+	);
 }
 
-function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal; timeoutMs?: number }) {
+function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal; timeoutMs?: number; redirectOnUnauthorized?: boolean }) {
 	return request<T>(
 		url,
 		{
@@ -80,6 +112,7 @@ function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal; tim
 			body: body != null ? JSON.stringify(body) : undefined,
 		},
 		opts?.timeoutMs,
+		{ redirectOnUnauthorized: opts?.redirectOnUnauthorized },
 	);
 }
 
@@ -104,6 +137,29 @@ interface EmailListResponse {
 // ---------- API client ----------
 
 const api = {
+	// Authentication
+	getSession: () =>
+		get<AuthSession>("/api/v1/auth/session", { redirectOnUnauthorized: false }),
+	login: (username: string, password: string) =>
+		post<AuthSession>(
+			"/api/v1/auth/login",
+			{ username, password },
+			{ redirectOnUnauthorized: false },
+		),
+	register: (data: {
+		username: string;
+		password: string;
+		mailboxPrefix: string;
+		registrationKey: string;
+	}) =>
+		post<AuthSession>("/api/v1/auth/register", data, {
+			redirectOnUnauthorized: false,
+		}),
+	logout: () =>
+		post<{ ok: true }>("/api/v1/auth/logout", undefined, {
+			redirectOnUnauthorized: false,
+		}),
+
 	// Config
 	getConfig: () =>
 		get<{ domains: string[]; emailAddresses: string[] }>("/api/v1/config"),
@@ -120,8 +176,8 @@ const api = {
 		get<{ order: string[] }>("/api/v1/mailboxes/order"),
 	updateMailboxOrder: (order: string[]) =>
 		put<{ order: string[] }>("/api/v1/mailboxes/order", { order }),
-	createMailbox: (email: string, name: string, settings?: unknown) =>
-		post<Mailbox>("/api/v1/mailboxes", { email, name, settings }),
+	createMailbox: (input: CreateMailboxInput) =>
+		post<Mailbox>("/api/v1/mailboxes", input),
 	getMailbox: (mailboxId: string) =>
 		get<Mailbox>(`/api/v1/mailboxes/${mailboxId}`),
 	updateMailbox: (mailboxId: string, settings: unknown) =>
@@ -186,7 +242,7 @@ const api = {
 	searchEmails: (mailboxId: string, params: Record<string, string>) =>
 		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/search`, { params }),
 
-	// Contacts (global address book)
+	// Contacts (account address book)
 	listContacts: () => get<Contact[]>("/api/v1/contacts"),
 	createContact: (name: string, email: string) =>
 		post<Contact>("/api/v1/contacts", { name, email }),
